@@ -1,8 +1,7 @@
 <template>
   <div class="caderno-diario-container">
     <header class="view-header">
-      <!-- Passo 1.2: Substituído H1 por H2 com a nova computed property -->
-      <h2>{{ dataExibicao }}</h2>
+      <h1>Caderno Digital Diário</h1>
       <input type="date" v-model="dataSelecionada" />
     </header>
 
@@ -106,25 +105,13 @@
             >
               Não Pago
             </button>
-            <!-- Passo 2.1: Adicionada a classe 'pago' -->
             <button
               type="button"
-              :class="{ active: pedidoAtual.metodo_pagamento === 'Pago', pago: true }"
+              :class="{ active: pedidoAtual.metodo_pagamento === 'Pago' }"
               @click="setPagamento('Pago')"
             >
               Pago
             </button>
-          </div>
-
-          <!-- Passo 2.2: Seção de Forma de Pagamento no Formulário -->
-          <div v-if="pedidoAtual.metodo_pagamento === 'Pago'" class="forma-pagamento-form">
-            <label>Forma de Pagamento (Opcional):</label>
-            <select v-model="pedidoAtual.forma_pagamento_venda">
-              <option value="">Não especificado</option>
-              <option value="Dinheiro">Dinheiro</option>
-              <option value="PIX">PIX</option>
-              <option value="Cartão">Cartão</option>
-            </select>
           </div>
 
           <button class="lancar-btn" type="submit">
@@ -134,7 +121,7 @@
       </section>
 
       <section class="lancamentos-lista-section">
-        <!-- O H2 original foi movido para o cabeçalho principal -->
+        <h2>Lançamentos de {{ dataFormatada }}</h2>
         <div v-if="!lancamentosDoDia || lancamentosDoDia.length === 0" class="placeholder-item">
           Nenhum lançamento para esta data.
         </div>
@@ -152,52 +139,51 @@
               <h3>
                 {{ lancamento.cliente_nome }}
                 <span v-if="lancamento.nome_funcionario_empresa" class="nome-funcionario">
-                  ({{ lancamento.nome_funcionario_empresa }})</span
-                >
+                  ({{ lancamento.nome_funcionario_empresa }})
+                </span>
               </h3>
-              <div class="status-e-acoes">
-                <div class="status-container">
-                  <button
-                    @click="alternarStatusPreparo(lancamento)"
-                    :class="[
-                      'status-preparo-btn',
-                      lancamento.status_preparo ? lancamento.status_preparo.toLowerCase() : '',
-                    ]"
+              <div class="status-container">
+                <button
+                  @click="alternarStatusPreparo(lancamento)"
+                  :class="[
+                    'status-preparo-btn',
+                    lancamento.status_preparo ? lancamento.status_preparo.toLowerCase() : '',
+                  ]"
+                >
+                  {{ lancamento.status_preparo }}
+                </button>
+                <span
+                  @click="alternarStatusPagamento(lancamento)"
+                  :class="[
+                    'status-tag',
+                    lancamento.metodo_pagamento === 'Não Pago' ? 'nao-pago' : 'pago',
+                  ]"
+                >
+                  {{ lancamento.metodo_pagamento }}
+                  <em v-if="lancamento.metodo_pagamento === 'Pago' && lancamento.forma_pagamento">
+                    ({{ lancamento.forma_pagamento }})</em
                   >
-                    {{ lancamento.status_preparo }}
-                  </button>
-                  <span
-                    @click="alternarStatusPagamento(lancamento)"
-                    :class="[
-                      'status-tag',
-                      lancamento.metodo_pagamento === 'Não Pago' ? 'nao-pago' : 'pago',
-                    ]"
-                  >
-                    {{ lancamento.metodo_pagamento }}
-                    <em v-if="lancamento.metodo_pagamento === 'Pago' && lancamento.forma_pagamento">
-                      ({{ lancamento.forma_pagamento }})</em
-                    >
-                  </span>
-                  <!-- Passo 3.1: Link "Detalhes" substituído por ícone -->
-                  <span
-                    v-if="lancamento.metodo_pagamento === 'Pago' && !lancamento.estornado"
-                    @click.stop="toggleSeletorFP(lancamento)"
-                    class="btn-detalhe-fp"
-                    >💳</span
-                  >
-                </div>
-                <div class="menu-acoes-container" ref="menuRefs">
-                  <button @click="abrirMenu(lancamento, $event)" class="btn-menu-acoes">⋮</button>
-                  <div v-if="menuAbertoId === lancamento.id" class="dropdown-menu">
-                    <button @click="iniciarEdicaoLancamento(lancamento)">✏️ Editar</button>
-                    <button @click="imprimirComprovante(lancamento)">🖨️ Imprimir</button>
-                    <button @click="estornarLancamento(lancamento)" class="acao-perigosa">
-                      🗑️ Estornar
-                    </button>
-                  </div>
-                </div>
+                </span>
+                <!-- NOVO: Link "Detalhes" -->
+                <span
+                  v-if="lancamento.metodo_pagamento === 'Pago'"
+                  @click.stop="toggleSeletorFP(lancamento)"
+                  class="detalhes-pagamento-btn"
+                >
+                  Detalhes
+                </span>
               </div>
               <span class="valor-total">Total: R$ {{ lancamento.valor.toFixed(2) }}</span>
+              <div class="menu-acoes-container" ref="menuRefs">
+                <button @click="abrirMenu(lancamento, $event)" class="btn-menu-acoes">⋮</button>
+                <div v-if="menuAbertoId === lancamento.id" class="dropdown-menu">
+                  <button @click="iniciarEdicaoLancamento(lancamento)">✏️ Editar</button>
+                  <button @click="imprimirComprovante(lancamento)">🖨️ Imprimir</button>
+                  <button @click="estornarLancamento(lancamento)" class="acao-perigosa">
+                    🗑️ Estornar
+                  </button>
+                </div>
+              </div>
             </div>
 
             <ul class="itens-lancamento">
@@ -206,7 +192,7 @@
               </li>
             </ul>
 
-            <!-- Passo 3.2: Pop-up de seleção -->
+            <!-- NOVO: Pop-up de seleção -->
             <div v-if="lancamento.mostrarSeletorFP" class="fp-popup">
               <button
                 @click="atualizarFormaPagamento(lancamento, 'Dinheiro')"
@@ -233,30 +219,20 @@
             </p>
           </div>
         </div>
-
-        <!-- Passo 4.3: Rodapé modificado para ocultar valores -->
         <footer v-if="lancamentosDoDia && lancamentosDoDia.length > 0" class="resumo-diario-footer">
           <div class="resumo-item">
             <span>Total de Vendas:</span>
-            <strong>
-              <span v-if="resumoVisivel">{{ resumoDiario.totalVendas }}</span>
-              <span v-else>••••</span>
-            </strong>
+            <strong>{{ resumoDiario.totalVendas }}</strong>
           </div>
           <div class="resumo-item">
             <span>Faturamento do Dia:</span>
-            <strong>
-              <span v-if="resumoVisivel">R$ {{ resumoDiario.faturamento.toFixed(2) }}</span>
-              <span v-else>R$ ••••</span>
-            </strong>
+            <strong>R$ {{ resumoDiario.faturamento.toFixed(2) }}</strong>
           </div>
-          <button @click="revelarResumo" class="btn-toggle-visibilidade">
-            {{ resumoVisivel ? '🙈' : '👁️' }}
-          </button>
         </footer>
       </section>
     </main>
 
+    <!-- Modal para Item Avulso -->
     <div v-if="mostrarModalItemAvulso" class="modal-overlay" @click.self="fecharModalItemAvulso">
       <div class="modal-content" @click.stop>
         <h3>Adicionar Item Avulso</h3>
@@ -272,12 +248,6 @@
         </form>
       </div>
     </div>
-
-    <PinModal
-      :visible="mostrarPinModal"
-      @close="mostrarPinModal = false"
-      @success="executarAcaoPendente"
-    />
   </div>
 </template>
 
@@ -285,12 +255,11 @@
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
 import { useDataStore } from '@/stores/dataStore.js'
 import { DADOS_RESTAURANTE, MENSAGEM_RODAPE } from '@/config.js'
-import PinModal from '@/components/PinModal.vue'
 
 const dataStore = useDataStore()
 
-const clientesParaSelecao = computed(() => dataStore.clientesAtivos || [])
-const produtosParaSelecao = computed(() => dataStore.produtosAtivos || [])
+const clientes = computed(() => dataStore.clientes || [])
+const produtos = computed(() => dataStore.produtos || [])
 const lancamentosDoDia = computed(() => dataStore.transacoes || [])
 
 const hoje = new Date()
@@ -302,11 +271,6 @@ const lancamentoEmEdicao = ref(null)
 const menuAbertoId = ref(null)
 const mostrarModalItemAvulso = ref(false)
 const itemAvulso = ref({ nome: '', preco: '' })
-const mostrarPinModal = ref(false)
-const acaoPendente = ref(null)
-
-// Passo 4.1: Ref para controlar a visibilidade do resumo
-const resumoVisivel = ref(false)
 
 const getInitialPedido = () => ({
   cliente: null,
@@ -314,7 +278,7 @@ const getInitialPedido = () => ({
   metodo_pagamento: 'Não Pago',
   observacoes: '',
   nome_funcionario: '',
-  forma_pagamento_venda: '',
+  // O campo forma_pagamento_venda não é mais necessário no formulário
 })
 
 const pedidoAtual = ref(getInitialPedido())
@@ -326,25 +290,16 @@ const resumoDiario = computed(() => {
   return { totalVendas, faturamento }
 })
 
-// Passo 1.1: Nova computed property para a data de exibição
-const dataExibicao = computed(() => {
-  if (!dataSelecionada.value) return ''
-  const data = new Date(dataSelecionada.value)
-  data.setMinutes(data.getMinutes() + data.getTimezoneOffset()) // Ajuste de fuso
-  const opcoes = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }
-  return new Intl.DateTimeFormat('pt-BR', opcoes).format(data)
-})
-
 const clientesFiltrados = computed(() => {
   if (!buscaCliente.value) return []
-  return clientesParaSelecao.value.filter((c) =>
-    c.nome.toLowerCase().includes(buscaCliente.value.toLowerCase()),
+  return (clientes.value || []).filter(
+    (c) => c && c.nome && c.nome.toLowerCase().includes(buscaCliente.value.toLowerCase()),
   )
 })
 
 const produtosFiltrados = computed(() => {
   if (!buscaProduto.value) return []
-  return produtosParaSelecao.value.filter(
+  return (produtos.value || []).filter(
     (p) => p && p.nome && p.nome.toLowerCase().includes(buscaProduto.value.toLowerCase()),
   )
 })
@@ -357,7 +312,7 @@ const removerCliente = () => {
   pedidoAtual.value.cliente = null
 }
 const selecionarClienteAvulso = () => {
-  const clienteAvulso = clientesParaSelecao.value.find((c) => c.nome === 'Cliente Avulso')
+  const clienteAvulso = clientes.value.find((c) => c.nome === 'Cliente Avulso')
   if (clienteAvulso) {
     pedidoAtual.value.cliente = clienteAvulso
     pedidoAtual.value.metodo_pagamento = 'Pago'
@@ -404,10 +359,14 @@ const totalPedido = computed(() => {
     0,
   )
 })
+const dataFormatada = computed(() => {
+  if (!dataSelecionada.value) return ''
+  const [ano, mes, dia] = dataSelecionada.value.split('-')
+  return `${dia}/${mes}/${ano}`
+})
 
 const carregarDadosIniciais = async () => {
   await dataStore.fetchClientes()
-  await dataStore.fetchProdutos() // Garante que os produtos estão disponíveis
   await dataStore.fetchTransacoesDoDia(dataSelecionada.value)
 }
 
@@ -423,10 +382,7 @@ const lancarPedido = async () => {
     valor: totalPedido.value,
     data_transacao: dataSelecionada.value,
     metodo_pagamento: pedidoAtual.value.metodo_pagamento,
-    forma_pagamento:
-      pedidoAtual.value.metodo_pagamento === 'Pago'
-        ? pedidoAtual.value.forma_pagamento_venda
-        : null,
+    forma_pagamento: null, // A forma de pagamento será definida depois
     estornado: false,
     status_preparo: 'PENDENTE',
     observacoes: pedidoAtual.value.observacoes,
@@ -444,43 +400,21 @@ const lancarPedido = async () => {
 const iniciarEdicaoLancamento = async (lancamento) => {
   menuAbertoId.value = null
   await dataStore.estornarLancamento(lancamento)
-  const clienteParaEditar = dataStore.todosOsClientes.find((c) => c.id === lancamento.cliente_id)
+  const clienteParaEditar = dataStore.clientes.find((c) => c.id === lancamento.cliente_id)
 
   pedidoAtual.value.cliente = clienteParaEditar
   pedidoAtual.value.itens = JSON.parse(JSON.stringify(lancamento.itens))
   pedidoAtual.value.metodo_pagamento = lancamento.metodo_pagamento
   pedidoAtual.value.observacoes = lancamento.observacoes || ''
   pedidoAtual.value.nome_funcionario = lancamento.nome_funcionario_empresa || ''
-  pedidoAtual.value.forma_pagamento_venda = lancamento.forma_pagamento || ''
-
+  // Não precisamos mais do forma_pagamento_venda aqui
   lancamentoEmEdicao.value = lancamento
 }
 
-const estornarLancamento = (lancamento) => {
-  acaoPendente.value = async () => {
+const estornarLancamento = async (lancamento) => {
+  if (confirm('Tem certeza que deseja estornar este lançamento? A ação não pode ser desfeita.')) {
     await dataStore.estornarLancamento(lancamento)
   }
-  mostrarPinModal.value = true
-}
-
-const executarAcaoPendente = () => {
-  if (acaoPendente.value) {
-    acaoPendente.value()
-  }
-  mostrarPinModal.value = false
-  acaoPendente.value = null
-}
-
-// Passo 4.2: Função para revelar o resumo
-const revelarResumo = () => {
-  if (resumoVisivel.value) {
-    resumoVisivel.value = false // Permite esconder novamente
-    return
-  }
-  acaoPendente.value = () => {
-    resumoVisivel.value = true
-  }
-  mostrarPinModal.value = true
 }
 
 const alternarStatusPagamento = async (lancamento) => {
@@ -497,11 +431,14 @@ const alternarStatusPreparo = async (lancamento) => {
   await dataStore.atualizarStatus(lancamento, { status_preparo: novoStatus })
 }
 
+// --- NOVA FUNÇÃO ---
 const atualizarFormaPagamento = async (lancamento, novaForma) => {
   await dataStore.atualizarStatus(lancamento, { forma_pagamento: novaForma })
 }
 
+// --- NOVA FUNÇÃO ---
 const toggleSeletorFP = (lancamento) => {
+  // Encontra o lançamento na lista e inverte o estado de `mostrarSeletorFP`
   const l = lancamentosDoDia.value.find((item) => item.id === lancamento.id)
   if (l) {
     l.mostrarSeletorFP = !l.mostrarSeletorFP
@@ -528,9 +465,40 @@ const confirmarItemAvulso = () => {
   })
   fecharModalItemAvulso()
 }
-
 const imprimirComprovante = (lancamento) => {
-  // Código de impressão... (mantido como está)
+  const printWindow = window.open('', '_blank', 'width=300,height=500')
+  const reciboHTML = `
+      <html>
+        <head><title>Comprovante</title>
+        <style>
+          body { font-family: 'Courier New', Courier, monospace; width: 280px; font-size: 12px; line-height: 1.4; }
+          .center { text-align: center; } .bold { font-weight: bold; } p { margin: 2px 0; }
+          .divider { border-top: 1px dashed black; margin: 5px 0; } .info { margin-bottom: 10px; }
+          .itens-table { width: 100%; border-collapse: collapse; } .itens-table th, .itens-table td { padding: 2px 0; vertical-align: top; }
+          .itens-table .valor { text-align: right; } .total-line { display: flex; justify-content: space-between; font-weight: bold; margin-top: 5px; }
+          .assinatura { margin-top: 30px; text-align: center; }
+        </style>
+        </head>
+        <body>
+          <div class="center bold"><p>${DADOS_RESTAURANTE.nome_fantasia.toUpperCase()}</p><p>${DADOS_RESTAURANTE.endereco}</p><p>CNPJ: ${DADOS_RESTAURANTE.cnpj}</p><p>TEL: ${DADOS_RESTAURANTE.telefone}</p></div>
+          <div class="divider"></div>
+          <div class="info"><p>Impresso em: ${new Date().toLocaleString('pt-BR')}</p><p>Cliente: ${lancamento.cliente_nome}</p>${lancamento.nome_funcionario_empresa ? `<p>Funcionário: ${lancamento.nome_funcionario_empresa}</p>` : ''}</div>
+          <div class="center bold"><p>${MENSAGEM_RODAPE}</p></div>
+          <div class="divider"></div>
+          <table class="itens-table"><thead><tr><th>Qtd</th><th>Descrição</th><th class="valor">Total</th></tr></thead>
+            <tbody>${lancamento.itens.map((item) => `<tr><td>${item.quantidade}</td><td>${item.nome_produto_congelado}</td><td class="valor">${(item.quantidade * item.preco_unitario_congelado).toFixed(2)}</td></tr>`).join('')}</tbody>
+          </table>
+          <div class="divider"></div>
+          <div class="total-line"><span>TOTAL A PAGAR:</span><span>R$ ${lancamento.valor.toFixed(2)}</span></div>
+          ${lancamento.metodo_pagamento === 'Não Pago' ? `<div class="assinatura"><p>_________________________</p><p>Assinatura</p></div>` : ''}
+        </body>
+      </html>`
+  printWindow.document.write(reciboHTML)
+  printWindow.document.close()
+  setTimeout(() => {
+    printWindow.print()
+    printWindow.close()
+  }, 250)
 }
 const fecharMenuSeClicarFora = (event) => {
   if (!event.target.closest('.menu-acoes-container')) {
@@ -544,7 +512,6 @@ const abrirMenu = (lancamento, event) => {
 
 watch(dataSelecionada, (novaData) => {
   dataStore.fetchTransacoesDoDia(novaData)
-  resumoVisivel.value = false // Esconde o resumo ao mudar de data
 })
 
 onMounted(() => {
@@ -570,11 +537,6 @@ onUnmounted(() => {
   padding: 10px 20px;
   background-color: #f8f9fa;
   border-bottom: 1px solid #dee2e6;
-}
-.view-header h2 {
-  margin: 0;
-  font-size: 1.5em;
-  color: #343a40;
 }
 .main-content {
   display: flex;
@@ -605,8 +567,7 @@ onUnmounted(() => {
   margin-bottom: -10px;
 }
 .lancamento-form input,
-.lancamento-form textarea,
-.lancamento-form select {
+.lancamento-form textarea {
   width: 100%;
   box-sizing: border-box;
   padding: 10px;
@@ -738,12 +699,6 @@ onUnmounted(() => {
   border-color: #ffc107;
   font-weight: bold;
 }
-/* Passo 2.1: Novo estilo para o botão 'Pago' ativo */
-.opcoes-pagamento button.active.pago {
-  background-color: #198754;
-  border-color: #198754;
-  color: white;
-}
 .lancar-btn {
   padding: 12px;
   background-color: #28a745;
@@ -773,15 +728,10 @@ onUnmounted(() => {
 }
 .lancamento-header {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto; /* Nome | Status | Total | Menu */
   gap: 15px;
   align-items: center;
-}
-.status-e-acoes {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  justify-self: end;
+  margin-bottom: 10px;
 }
 .lancamento-header h3 {
   margin: 0;
@@ -792,7 +742,7 @@ onUnmounted(() => {
 .itens-lancamento {
   list-style: none;
   padding-left: 20px;
-  margin: 10px 0;
+  margin: 0 0 10px 0;
 }
 .status-tag {
   padding: 4px 10px;
@@ -855,14 +805,16 @@ onUnmounted(() => {
   display: flex;
   gap: 10px;
   align-items: center;
+  justify-self: end;
 }
 .valor-total {
   font-weight: bold;
   font-size: 1.1em;
   justify-self: end;
 }
+
 .menu-acoes-container {
-  position: relative;
+  justify-self: end;
 }
 .btn-menu-acoes {
   font-size: 1.5em;
@@ -907,10 +859,13 @@ onUnmounted(() => {
   color: #dc3545;
 }
 
-/* Passo 3.3: Estilos para o ícone e pop-up */
-.btn-detalhe-fp {
+/* ESTILOS PARA NOVA FUNCIONALIDADE */
+.detalhes-pagamento-btn {
+  font-size: 0.8em;
+  color: #0d6efd;
   cursor: pointer;
-  font-size: 1.2em;
+  text-decoration: underline;
+  margin-left: -5px; /* aproxima do status */
 }
 .fp-popup {
   display: flex;
@@ -936,6 +891,7 @@ onUnmounted(() => {
   border-color: #0d6efd;
 }
 
+/* ESTILOS DO MODAL */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -976,15 +932,13 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-/* Passo 4.3: Estilos para o resumo com visibilidade */
+/* ESTILOS DO RESUMO */
 .resumo-diario-footer {
   border-top: 2px solid #ddd;
   margin-top: 20px;
   padding-top: 15px;
-  display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  align-items: center;
-  gap: 20px;
+  display: flex;
+  justify-content: space-between;
   font-size: 1.2em;
 }
 .resumo-item {
@@ -994,12 +948,5 @@ onUnmounted(() => {
 }
 .resumo-item strong {
   color: #0d6efd;
-}
-.btn-toggle-visibilidade {
-  background: none;
-  border: none;
-  font-size: 1.8em;
-  cursor: pointer;
-  padding: 0 10px;
 }
 </style>

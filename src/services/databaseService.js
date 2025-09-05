@@ -3,12 +3,12 @@ import Dexie from 'dexie'
 export const db = new Dexie('restauranteSilvaDB')
 
 // Versão FINAL da estrutura. Qualquer mudança futura será a partir da versão 7.
-db.version(6).stores({
+db.version(8).stores({
   // O '?' em 'ativo' indica que o índice é opcional e pode não existir em todos os registros.
   // Isso lida perfeitamente com dados antigos que não tinham o campo 'ativo'.
   clientes: '++id, nome, ativo',
   produtos: '++id, nome, ativo',
-  transacoes: '++id, data_transacao, cliente_id, status_preparo',
+  transacoes: '++id, data_transacao, cliente_id, status_preparo, estornado',
   itens_transacao: '++id, transacao_id, produto_id',
   configuracoes: '&id',
 })

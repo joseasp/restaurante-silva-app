@@ -27,6 +27,11 @@ const router = createRouter({
       path: '/contas-receber',
       name: 'contas-receber',
       component: () => import('../views/ContasReceberView.vue')
+    },
+    {
+      path: '/relatorios',
+      name: 'relatorios',
+      component: () => import('../views/RelatoriosView.vue')
     }
   ]
 })

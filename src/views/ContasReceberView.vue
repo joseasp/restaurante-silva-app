@@ -50,6 +50,17 @@
             v-model="valorPagamento"
             required
           />
+          <select v-model="formaPagamento">
+            <option disabled value="">Selecione a forma (opcional)</option>
+            <option>Dinheiro</option>
+            <option>PIX</option>
+            <option>Cartão</option>
+          </select>
+          <textarea
+            v-model="observacoesPagamento"
+            placeholder="Observações (opcional)"
+            rows="2"
+          ></textarea>
           <button type="submit">Registrar Pagamento</button>
         </form>
 
@@ -57,16 +68,44 @@
           <li
             v-for="t in clienteSelecionado.transacoes"
             :key="t.id"
-            :class="t.tipo_transacao.toLowerCase()"
+            class="transacao-item"
+            :class="{
+              estornado: t.estornado,
+              'fundo-pagamento': t.tipo_transacao === 'PAGAMENTO' && !t.estornado,
+            }"
           >
-            <div class="transacao-header">
-              <span>{{ new Date(t.created_at || t.data_transacao).toLocaleString('pt-BR') }}</span>
-              <span class="tipo-transacao">{{ t.tipo_transacao }}</span>
+            <div class="transacao-info">
+              <span class="data">{{
+                new Date(t.created_at || t.data_transacao).toLocaleString('pt-BR')
+              }}</span>
+              <span class="tipo-transacao">
+                {{ t.tipo_transacao }}
+                <em
+                  v-if="
+                    (t.tipo_transacao === 'PAGAMENTO' ||
+                      (t.tipo_transacao === 'VENDA' && t.metodo_pagamento === 'Pago')) &&
+                    t.forma_pagamento
+                  "
+                >
+                  ({{ t.forma_pagamento }})</em
+                >
+              </span>
               <span :class="{ 'valor-positivo': t.valor > 0, 'valor-negativo': t.valor < 0 }">
                 R$ {{ t.valor > 0 ? '+' : '' }}{{ t.valor.toFixed(2) }}
               </span>
             </div>
-            <!-- NOVO: Mostra os itens se for uma venda -->
+            <div class="transacao-acoes">
+              <button
+                v-if="t.tipo_transacao === 'PAGAMENTO' && !t.estornado"
+                @click="estornarPagamento(t)"
+                class="btn-estornar"
+              >
+                🗑️
+              </button>
+            </div>
+            <div v-if="t.observacoes" class="observacoes-transacao">
+              <strong>Obs:</strong> {{ t.observacoes }}
+            </div>
             <ul v-if="t.tipo_transacao === 'VENDA' && t.itens" class="itens-da-venda">
               <li v-for="item in t.itens" :key="item.id">
                 - {{ item.quantidade }}x {{ item.nome_produto_congelado }}
@@ -76,98 +115,159 @@
         </ul>
       </div>
     </div>
+
+    <PinModal
+      :visible="mostrarPinModal"
+      @close="mostrarPinModal = false"
+      @success="executarAcaoPendente"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
-import { useDataStore } from '@/stores/dataStore.js';
-import { db } from '@/services/databaseService.js';
+import { ref, watch, onMounted } from 'vue' // Adicionado onMounted
+import { useDataStore } from '@/stores/dataStore.js'
+import { db } from '@/services/databaseService.js'
+import PinModal from '@/components/PinModal.vue'
+import { useAuthStore } from '@/stores/authStore'
 
-const dataStore = useDataStore();
+const dataStore = useDataStore()
+const authStore = useAuthStore()
 
-const todosOsClientesComConta = ref([]);
-const clienteSelecionado = ref(null);
-const valorPagamento = ref('');
+const todosOsClientesComConta = ref([])
+const clienteSelecionado = ref(null)
+const valorPagamento = ref('')
+const formaPagamento = ref('')
+const observacoesPagamento = ref('')
+const mostrarPinModal = ref(false)
+const acaoPendente = ref(null)
 
-// Get the active clients from the store
-const clientesAtivos = computed(() => dataStore.clientes);
-
+// --- CORREÇÃO: A FUNÇÃO carregarContas AGORA ESTÁ ANTES DE SER USADA ---
 const carregarContas = async () => {
   try {
-    const todosOsClientesDoBanco = await db.clientes.toArray();
-    const todasTransacoes = await db.transacoes.toArray();
-    
-    const clientesAtivos = todosOsClientesDoBanco.filter(c => {
-      if (c.ativo === undefined) c.ativo = true;
-      // --- FILTRO ADICIONADO AQUI ---
-      return c.ativo === true && c.tipo !== 'AVULSO'; 
-    });
+    const todasTransacoes = await db.transacoes.toArray()
+    const clientesParaCalculo = dataStore.todosOsClientes.filter((c) => c.tipo !== 'AVULSO')
 
-    const contas = clientesAtivos.map(cliente => {
-      const transacoesDoCliente = todasTransacoes.filter(t => t.cliente_id === cliente.id);
-      
-      const saldo = transacoesDoCliente.reduce((acc, t) => {
-        if (t.tipo_transacao === 'VENDA' && t.metodo_pagamento === 'Não Pago') {
-          return acc + t.valor;
-        }
-        if (t.tipo_transacao === 'PAGAMENTO') {
-          return acc + t.valor;
-        }
-        return acc;
-      }, 0);
-      
-      const transacoesComItens = transacoesDoCliente.map(t => {
-        if (t.tipo_transacao === 'VENDA') {
-          const itens = []; // Placeholder
-          return { ...t, itens };
-        }
-        return t;
-      }).sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    const contas = await Promise.all(
+      clientesParaCalculo.map(async (cliente) => {
+        const transacoesDoCliente = todasTransacoes.filter((t) => t.cliente_id === cliente.id)
 
-      return { ...cliente, saldo, transacoes: transacoesComItens };
-    });
+        const saldo = transacoesDoCliente.reduce((acc, t) => {
+          if (!t.estornado) {
+            if (t.tipo_transacao === 'VENDA' && t.metodo_pagamento === 'Não Pago') {
+              return acc + t.valor
+            }
+            if (t.tipo_transacao === 'PAGAMENTO') {
+              return acc + t.valor
+            }
+          }
+          return acc
+        }, 0)
 
-    todosOsClientesComConta.value = contas.sort((a, b) => a.nome.localeCompare(b.nome));
+        const transacoesComItens = await Promise.all(
+          transacoesDoCliente.map(async (t) => {
+            if (t.tipo_transacao === 'VENDA') {
+              const itens = await db.itens_transacao.where({ transacao_id: t.id }).toArray()
+              return { ...t, itens }
+            }
+            return t
+          }),
+        )
 
+        transacoesComItens.sort(
+          (a, b) =>
+            new Date(b.created_at || b.data_transacao || 0) -
+            new Date(a.created_at || a.data_transacao || 0),
+        )
+
+        return { ...cliente, saldo, transacoes: transacoesComItens }
+      }),
+    )
+
+    todosOsClientesComConta.value = contas
+      .filter((c) => c.transacoes.length > 0)
+      .sort((a, b) => a.nome.localeCompare(b.nome))
   } catch (error) {
-    console.error("Erro ao carregar contas:", error);
-    todosOsClientesComConta.value = [];
+    console.error('Erro ao carregar contas:', error)
+    todosOsClientesComConta.value = []
   }
-};
+}
+
+// --- CORREÇÃO: O watch agora pode chamar carregarContas sem erro ---
+watch(
+  () => dataStore.todosOsClientes,
+  () => {
+    carregarContas()
+  },
+  { immediate: true, deep: true },
+)
+
+onMounted(async () => {
+  // É uma boa prática garantir que os clientes estão carregados antes de rodar a lógica
+  await dataStore.fetchClientes()
+})
 
 const selecionarCliente = (cliente) => {
-  clienteSelecionado.value = cliente;
-};
+  clienteSelecionado.value = cliente
+}
 
 const registrarPagamento = async () => {
-  if (!clienteSelecionado.value || !valorPagamento.value) return;
-  const valor = parseFloat(valorPagamento.value);
+  if (!clienteSelecionado.value || !valorPagamento.value) return
+  const valor = parseFloat(valorPagamento.value)
   if (valor <= 0) {
-    alert('O valor do pagamento deve ser positivo.');
-    return;
+    alert('O valor do pagamento deve ser positivo.')
+    return
   }
   try {
-    const clienteId = clienteSelecionado.value.id;
+    const clienteId = clienteSelecionado.value.id
     await db.transacoes.add({
       cliente_id: clienteId,
       tipo_transacao: 'PAGAMENTO',
       valor: -valor,
       data_transacao: new Date().toISOString().slice(0, 10),
       created_at: new Date(),
-    });
-    valorPagamento.value = '';
-    await carregarContas();
-    const clienteAtualizado = todosOsClientesComConta.value.find((c) => c.id === clienteId);
-    selecionarCliente(clienteAtualizado);
+      estornado: false,
+      forma_pagamento: formaPagamento.value || null,
+      observacoes: observacoesPagamento.value,
+    })
+
+    valorPagamento.value = ''
+    formaPagamento.value = ''
+    observacoesPagamento.value = ''
+
+    await carregarContas()
+    const clienteAtualizado = todosOsClientesComConta.value.find((c) => c.id === clienteId)
+    if (clienteAtualizado) {
+      selecionarCliente(clienteAtualizado)
+    }
   } catch (error) {
-    console.error('Erro ao registrar pagamento:', error);
+    console.error('Erro ao registrar pagamento:', error)
   }
-};
+}
 
-// Watch for changes in the store's clients and reload the accounts
-watch(clientesAtivos, carregarContas, { immediate: true });
+const estornarPagamento = (pagamento) => {
+  acaoPendente.value = async () => {
+    await db.transacoes.update(pagamento.id, { estornado: true })
+    await carregarContas()
+    const clienteAtualizado = todosOsClientesComConta.value.find(
+      (c) => c.id === pagamento.cliente_id,
+    )
+    if (clienteAtualizado) {
+      selecionarCliente(clienteAtualizado)
+    } else {
+      clienteSelecionado.value = null
+    }
+  }
+  mostrarPinModal.value = true
+}
 
+const executarAcaoPendente = () => {
+  if (acaoPendente.value) {
+    acaoPendente.value()
+  }
+  mostrarPinModal.value = false
+  acaoPendente.value = null
+}
 </script>
 
 <style scoped>
@@ -179,6 +279,7 @@ watch(clientesAtivos, carregarContas, { immediate: true });
   width: 350px;
   border-right: 1px solid #ddd;
   overflow-y: auto;
+  flex-shrink: 0;
 }
 .lista-clientes h2 {
   padding: 20px;
@@ -240,39 +341,113 @@ watch(clientesAtivos, carregarContas, { immediate: true });
   color: #198754;
 }
 .pagamento-form {
-  display: flex;
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  grid-template-areas:
+    'valor select'
+    'obs obs'
+    'botao botao';
   gap: 10px;
-  margin-bottom: 20px;
+  align-items: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #ddd;
 }
-.pagamento-form input {
-  flex-grow: 1;
+.pagamento-form input[type='number'] {
+  grid-area: valor;
   padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+}
+.pagamento-form select {
+  grid-area: select;
+  padding: 10px;
+}
+.pagamento-form textarea {
+  grid-area: obs;
+  padding: 10px;
 }
 .pagamento-form button {
-  padding: 10px 15px;
-  background: #28a745;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
+  grid-area: botao;
+  padding: 10px;
 }
 
-.lista-transacoes li {
+.lista-transacoes {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.transacao-item {
+  display: grid;
+  grid-template-columns: 1fr auto; /* Coluna de info e coluna de ações */
+  gap: 10px;
+  padding: 15px 10px;
+  border-bottom: 1px solid #eee;
+}
+.transacao-info {
   display: grid;
   grid-template-columns: 160px 100px 1fr;
   gap: 10px;
-  padding: 10px;
-  border-bottom: 1px solid #eee;
   align-items: center;
+}
+.transacao-acoes {
+  justify-self: end;
+}
+.btn-estornar {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2em;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+.btn-estornar:hover {
+  opacity: 1;
+}
+.transacao-item.estornado {
+  background-color: #f8f9fa;
+  color: #adb5bd;
+  text-decoration: line-through;
+}
+.transacao-item.estornado .valor-positivo,
+.transacao-item.estornado .valor-negativo {
+  color: #adb5bd;
+}
+.fundo-pagamento {
+  background-color: #e8f5e9;
+}
+.transacao-item:last-child {
+  border-bottom: none;
+}
+.tipo-transacao em {
+  font-style: italic;
+  color: #666;
 }
 .valor-positivo {
   color: #dc3545;
+  font-weight: bold;
   text-align: right;
 }
 .valor-negativo {
-  color: #28a745;
+  color: #198754;
+  font-weight: bold;
   text-align: right;
+}
+.itens-da-venda,
+.observacoes-transacao {
+  grid-column: 1 / -1;
+  padding-left: 20px;
+  margin-top: 8px;
+}
+.itens-da-venda {
+  list-style: none;
+  font-size: 0.9em;
+  color: #333;
+}
+.observacoes-transacao {
+  font-size: 0.9em;
+  color: #555;
+  white-space: pre-wrap;
+  background-color: #f8f9fa;
+  padding: 5px 10px;
+  border-radius: 4px;
 }
 </style>
