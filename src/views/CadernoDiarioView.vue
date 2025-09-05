@@ -1,9 +1,12 @@
 <template>
   <div class="caderno-diario-container">
+    <!-- PASSO 1: CABEÇALHO ATUALIZADO -->
     <header class="view-header">
-      <!-- Passo 1.2: Substituído H1 por H2 com a nova computed property -->
       <h2>{{ dataExibicao }}</h2>
-      <input type="date" v-model="dataSelecionada" />
+      <div class="header-actions">
+        <input type="date" v-model="dataSelecionada" />
+        <button @click="imprimirCadernoDoDia" class="btn-imprimir-dia">🖨️ Imprimir Dia</button>
+      </div>
     </header>
 
     <main class="main-content">
@@ -106,7 +109,6 @@
             >
               Não Pago
             </button>
-            <!-- Passo 2.1: Adicionada a classe 'pago' -->
             <button
               type="button"
               :class="{ active: pedidoAtual.metodo_pagamento === 'Pago', pago: true }"
@@ -116,7 +118,6 @@
             </button>
           </div>
 
-          <!-- Passo 2.2: Seção de Forma de Pagamento no Formulário -->
           <div v-if="pedidoAtual.metodo_pagamento === 'Pago'" class="forma-pagamento-form">
             <label>Forma de Pagamento (Opcional):</label>
             <select v-model="pedidoAtual.forma_pagamento_venda">
@@ -134,7 +135,6 @@
       </section>
 
       <section class="lancamentos-lista-section">
-        <!-- O H2 original foi movido para o cabeçalho principal -->
         <div v-if="!lancamentosDoDia || lancamentosDoDia.length === 0" class="placeholder-item">
           Nenhum lançamento para esta data.
         </div>
@@ -178,7 +178,6 @@
                       ({{ lancamento.forma_pagamento }})</em
                     >
                   </span>
-                  <!-- Passo 3.1: Link "Detalhes" substituído por ícone -->
                   <span
                     v-if="lancamento.metodo_pagamento === 'Pago' && !lancamento.estornado"
                     @click.stop="toggleSeletorFP(lancamento)"
@@ -206,7 +205,6 @@
               </li>
             </ul>
 
-            <!-- Passo 3.2: Pop-up de seleção -->
             <div v-if="lancamento.mostrarSeletorFP" class="fp-popup">
               <button
                 @click="atualizarFormaPagamento(lancamento, 'Dinheiro')"
@@ -234,7 +232,6 @@
           </div>
         </div>
 
-        <!-- Passo 4.3: Rodapé modificado para ocultar valores -->
         <footer v-if="lancamentosDoDia && lancamentosDoDia.length > 0" class="resumo-diario-footer">
           <div class="resumo-item">
             <span>Total de Vendas:</span>
@@ -304,8 +301,6 @@ const mostrarModalItemAvulso = ref(false)
 const itemAvulso = ref({ nome: '', preco: '' })
 const mostrarPinModal = ref(false)
 const acaoPendente = ref(null)
-
-// Passo 4.1: Ref para controlar a visibilidade do resumo
 const resumoVisivel = ref(false)
 
 const getInitialPedido = () => ({
@@ -326,11 +321,10 @@ const resumoDiario = computed(() => {
   return { totalVendas, faturamento }
 })
 
-// Passo 1.1: Nova computed property para a data de exibição
 const dataExibicao = computed(() => {
   if (!dataSelecionada.value) return ''
   const data = new Date(dataSelecionada.value)
-  data.setMinutes(data.getMinutes() + data.getTimezoneOffset()) // Ajuste de fuso
+  data.setMinutes(data.getMinutes() + data.getTimezoneOffset())
   const opcoes = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }
   return new Intl.DateTimeFormat('pt-BR', opcoes).format(data)
 })
@@ -407,7 +401,7 @@ const totalPedido = computed(() => {
 
 const carregarDadosIniciais = async () => {
   await dataStore.fetchClientes()
-  await dataStore.fetchProdutos() // Garante que os produtos estão disponíveis
+  await dataStore.fetchProdutos()
   await dataStore.fetchTransacoesDoDia(dataSelecionada.value)
 }
 
@@ -471,10 +465,9 @@ const executarAcaoPendente = () => {
   acaoPendente.value = null
 }
 
-// Passo 4.2: Função para revelar o resumo
 const revelarResumo = () => {
   if (resumoVisivel.value) {
-    resumoVisivel.value = false // Permite esconder novamente
+    resumoVisivel.value = false
     return
   }
   acaoPendente.value = () => {
@@ -530,7 +523,7 @@ const confirmarItemAvulso = () => {
 }
 
 const imprimirComprovante = (lancamento) => {
-  // Código de impressão... (mantido como está)
+  /* ... */
 }
 const fecharMenuSeClicarFora = (event) => {
   if (!event.target.closest('.menu-acoes-container')) {
@@ -542,9 +535,101 @@ const abrirMenu = (lancamento, event) => {
   menuAbertoId.value = menuAbertoId.value === lancamento.id ? null : lancamento.id
 }
 
+const imprimirCadernoDoDia = () => {
+  if (lancamentosDoDia.value.length === 0) {
+    alert('Não há lançamentos para imprimir nesta data.')
+    return
+  }
+
+  // Lógica existente para gerar o HTML do relatório
+  const dataFormatadaParaPrint = new Date(dataSelecionada.value).toLocaleDateString('pt-BR', {
+    timeZone: 'UTC',
+  })
+
+  const corpoTabela = lancamentosDoDia.value
+    .filter((l) => !l.estornado)
+    .map((lancamento) => {
+      const itensHTML = lancamento.itens
+        .map((item) => `<li>${item.quantidade}x ${item.nome_produto_congelado}</li>`)
+        .join('')
+      return `
+        <tr>
+          <td>${lancamento.cliente_nome} ${lancamento.nome_funcionario_empresa ? '(' + lancamento.nome_funcionario_empresa + ')' : ''}</td>
+          <td><ul>${itensHTML}</ul></td>
+          <td>${lancamento.observacoes || ''}</td>
+          <td>${lancamento.status_preparo}</td>
+          <td>${lancamento.metodo_pagamento} ${lancamento.forma_pagamento ? '(' + lancamento.forma_pagamento + ')' : ''}</td>
+          <td>R$ ${lancamento.valor.toFixed(2)}</td>
+        </tr>
+      `
+    })
+    .join('')
+
+  const resumoHTML = `
+    <div class="resumo-print">
+      <p><strong>Total de Vendas:</strong> ${resumoDiario.value.totalVendas}</p>
+      <p><strong>Faturamento do Dia:</strong> R$ ${resumoDiario.value.faturamento.toFixed(2)}</p>
+    </div>
+  `
+
+  const relatorioHTML = `
+    <html>
+      <head>
+        <title>Caderno do Dia - ${dataFormatadaParaPrint}</title>
+        <style>
+          body { font-family: sans-serif; } table { width: 100%; border-collapse: collapse; margin-top: 20px;}
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; } th { background-color: #f2f2f2; }
+          ul { margin: 0; padding-left: 15px; } .resumo-print { margin-top: 20px; text-align: right; font-size: 1.2em; }
+        </style>
+      </head>
+      <body>
+        <h1>Lançamentos do Dia: ${dataFormatadaParaPrint}</h1>
+        <table>
+          <thead>
+            <tr>
+              <th>Cliente (Funcionário)</th>
+              <th>Itens</th>
+              <th>Observações</th>
+              <th>Preparo</th>
+              <th>Pagamento</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${corpoTabela}
+          </tbody>
+        </table>
+        ${resumoHTML}
+      </body>
+    </html>
+  `
+
+  // --- LÓGICA DE IMPRESSÃO SEGURA COM IFRAME ---
+  const iframe = document.createElement('iframe')
+  iframe.style.position = 'absolute'
+  iframe.style.width = '0'
+  iframe.style.height = '0'
+  iframe.style.border = '0'
+
+  document.body.appendChild(iframe)
+
+  const doc = iframe.contentWindow.document
+  doc.open()
+  doc.write(relatorioHTML)
+  doc.close()
+
+  iframe.contentWindow.focus()
+  iframe.contentWindow.print()
+
+  // Remove o iframe do DOM após um tempo para limpar a memória.
+  setTimeout(() => {
+    document.body.removeChild(iframe)
+  }, 1000)
+}
+
 watch(dataSelecionada, (novaData) => {
   dataStore.fetchTransacoesDoDia(novaData)
-  resumoVisivel.value = false // Esconde o resumo ao mudar de data
+  resumoVisivel.value = false
 })
 
 onMounted(() => {
@@ -558,11 +643,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.caderno-diario-container {
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 58px);
-}
+/* PASSO 3: ESTILOS ATUALIZADOS E ADICIONADOS */
 .view-header {
   display: flex;
   justify-content: space-between;
@@ -576,6 +657,25 @@ onUnmounted(() => {
   font-size: 1.5em;
   color: #343a40;
 }
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.btn-imprimir-dia {
+  padding: 8px 12px;
+  border: 1px solid #6c757d;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.btn-imprimir-dia:hover {
+  background-color: #e2e6ea;
+}
+
+/* ... (O resto do seu CSS permanece o mesmo) ... */
+
 .main-content {
   display: flex;
   flex-grow: 1;
@@ -738,7 +838,6 @@ onUnmounted(() => {
   border-color: #ffc107;
   font-weight: bold;
 }
-/* Passo 2.1: Novo estilo para o botão 'Pago' ativo */
 .opcoes-pagamento button.active.pago {
   background-color: #198754;
   border-color: #198754;
@@ -907,7 +1006,6 @@ onUnmounted(() => {
   color: #dc3545;
 }
 
-/* Passo 3.3: Estilos para o ícone e pop-up */
 .btn-detalhe-fp {
   cursor: pointer;
   font-size: 1.2em;
@@ -976,7 +1074,6 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-/* Passo 4.3: Estilos para o resumo com visibilidade */
 .resumo-diario-footer {
   border-top: 2px solid #ddd;
   margin-top: 20px;

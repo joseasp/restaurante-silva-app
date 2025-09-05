@@ -2,9 +2,14 @@
   <div class="contas-container">
     <div class="lista-clientes">
       <h2>Clientes com Histórico</h2>
+      <!-- PASSO 3: CAMPO DE BUSCA ADICIONADO -->
+      <div class="busca-container">
+        <input type="text" v-model="buscaCliente" placeholder="Buscar cliente..." />
+      </div>
+      <!-- PASSO 4: V-FOR MODIFICADO -->
       <ul>
         <li
-          v-for="cliente in todosOsClientesComConta"
+          v-for="cliente in clientesFiltrados"
           :key="cliente.id"
           @click="selecionarCliente(cliente)"
           :class="{ active: clienteSelecionado && clienteSelecionado.id === cliente.id }"
@@ -42,6 +47,17 @@
           <span v-else>Saldo Zerado</span>
         </div>
 
+        <!-- No topo da seção do extrato -->
+        <div class="extrato-actions">
+          <div class="filtro-periodo">
+            <label>De:</label>
+            <input type="date" v-model="filtroInicio" />
+            <label>Até:</label>
+            <input type="date" v-model="filtroFim" />
+          </div>
+          <button @click="imprimirExtrato" class="btn-imprimir">🖨️ Imprimir Extrato</button>
+        </div>
+
         <form @submit.prevent="registrarPagamento" class="pagamento-form">
           <input
             type="number"
@@ -66,7 +82,7 @@
 
         <ul class="lista-transacoes">
           <li
-            v-for="t in clienteSelecionado.transacoes"
+            v-for="t in transacoesFiltradas"
             :key="t.id"
             class="transacao-item"
             :class="{
@@ -125,7 +141,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue' // Adicionado onMounted
+import { ref, computed, watch, onMounted } from 'vue'
 import { useDataStore } from '@/stores/dataStore.js'
 import { db } from '@/services/databaseService.js'
 import PinModal from '@/components/PinModal.vue'
@@ -142,7 +158,31 @@ const observacoesPagamento = ref('')
 const mostrarPinModal = ref(false)
 const acaoPendente = ref(null)
 
-// --- CORREÇÃO: A FUNÇÃO carregarContas AGORA ESTÁ ANTES DE SER USADA ---
+const buscaCliente = ref('')
+
+const filtroInicio = ref('')
+const filtroFim = ref('')
+
+const clientesFiltrados = computed(() => {
+  if (!buscaCliente.value) {
+    return todosOsClientesComConta.value
+  }
+  return todosOsClientesComConta.value.filter((c) =>
+    c.nome.toLowerCase().includes(buscaCliente.value.toLowerCase()),
+  )
+})
+
+const transacoesFiltradas = computed(() => {
+  if (!clienteSelecionado.value) return []
+  if (!filtroInicio.value || !filtroFim.value) {
+    return clienteSelecionado.value.transacoes // Retorna todas se não houver filtro
+  }
+  return clienteSelecionado.value.transacoes.filter((t) => {
+    const dataTransacao = t.data_transacao
+    return dataTransacao >= filtroInicio.value && dataTransacao <= filtroFim.value
+  })
+})
+
 const carregarContas = async () => {
   try {
     const todasTransacoes = await db.transacoes.toArray()
@@ -193,7 +233,6 @@ const carregarContas = async () => {
   }
 }
 
-// --- CORREÇÃO: O watch agora pode chamar carregarContas sem erro ---
 watch(
   () => dataStore.todosOsClientes,
   () => {
@@ -203,7 +242,6 @@ watch(
 )
 
 onMounted(async () => {
-  // É uma boa prática garantir que os clientes estão carregados antes de rodar a lógica
   await dataStore.fetchClientes()
 })
 
@@ -268,6 +306,84 @@ const executarAcaoPendente = () => {
   mostrarPinModal.value = false
   acaoPendente.value = null
 }
+
+const imprimirExtrato = () => {
+  if (!clienteSelecionado.value) return
+
+  const cliente = clienteSelecionado.value
+  const transacoesParaImprimir = transacoesFiltradas.value.filter((t) => !t.estornado)
+
+  const corpoTabela = transacoesParaImprimir
+    .map((t) => {
+      const valor = t.valor.toFixed(2)
+      const tipo = t.tipo_transacao
+      const detalhes =
+        t.tipo_transacao === 'VENDA' && t.itens
+          ? t.itens
+              .map((item) => `<li>${item.quantidade}x ${item.nome_produto_congelado}</li>`)
+              .join('')
+          : t.observacoes || ''
+
+      return `
+          <tr>
+              <td>${new Date(t.created_at || t.data_transacao).toLocaleDateString('pt-BR')}</td>
+              <td>${tipo}</td>
+              <td><ul>${detalhes}</ul></td>
+              <td class="${t.valor > 0 ? 'debito' : 'credito'}">R$ ${valor}</td>
+          </tr>
+      `
+    })
+    .join('')
+
+  const extratoHTML = `
+    <html>
+      <head>
+        <title>Extrato de ${cliente.nome}</title>
+        <style>
+          body { font-family: sans-serif; } table { width: 100%; border-collapse: collapse; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }
+          ul { margin: 0; padding-left: 15px; list-style-position: inside; } .debito { color: red; } .credito { color: green; }
+        </style>
+      </head>
+      <body>
+        <h1>Extrato do Cliente: ${cliente.nome}</h1>
+        <h3>Saldo Devedor Atual: R$ ${cliente.saldo.toFixed(2)}</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Operação</th>
+              <th>Detalhes</th>
+              <th>Valor</th>
+            </tr>
+          </thead>
+          <tbody>${corpoTabela}</tbody>
+        </table>
+      </body>
+    </html>`
+
+  // --- LÓGICA DE IMPRESSÃO APRIMORADA ---
+  const iframe = document.createElement('iframe')
+  iframe.style.position = 'absolute'
+  iframe.style.width = '0'
+  iframe.style.height = '0'
+  iframe.style.border = '0'
+
+  document.body.appendChild(iframe)
+
+  const doc = iframe.contentWindow.document
+  doc.open()
+  doc.write(extratoHTML)
+  doc.close()
+
+  iframe.contentWindow.focus() // Foca no iframe para a impressão
+  iframe.contentWindow.print()
+
+  // Remove o iframe do DOM após a impressão para limpar a memória
+  setTimeout(() => {
+    document.body.removeChild(iframe)
+  }, 1000)
+}
 </script>
 
 <style scoped>
@@ -280,6 +396,8 @@ const executarAcaoPendente = () => {
   border-right: 1px solid #ddd;
   overflow-y: auto;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
 }
 .lista-clientes h2 {
   padding: 20px;
@@ -288,10 +406,24 @@ const executarAcaoPendente = () => {
   border-bottom: 1px solid #ddd;
   font-size: 1.2em;
 }
+/* ESTILO PARA O CONTAINER DA BUSCA */
+.busca-container {
+  padding: 10px 15px;
+  border-bottom: 1px solid #ddd;
+  background-color: #f8f9fa;
+}
+.busca-container input {
+  width: 100%;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}
 .lista-clientes ul {
   list-style: none;
   padding: 0;
   margin: 0;
+  flex-grow: 1;
+  overflow-y: auto;
 }
 .lista-clientes li {
   display: flex;
@@ -340,6 +472,40 @@ const executarAcaoPendente = () => {
 .saldo-total.credor {
   color: #198754;
 }
+
+.extrato-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #ddd;
+  gap: 15px;
+}
+.filtro-periodo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.filtro-periodo input {
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}
+.btn-imprimir {
+  padding: 10px 15px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1em;
+  transition: background-color 0.2s;
+}
+.btn-imprimir:hover {
+  background-color: #45a049;
+}
+
 .pagamento-form {
   display: grid;
   grid-template-columns: 2fr 1fr;
@@ -377,7 +543,7 @@ const executarAcaoPendente = () => {
 }
 .transacao-item {
   display: grid;
-  grid-template-columns: 1fr auto; /* Coluna de info e coluna de ações */
+  grid-template-columns: 1fr auto;
   gap: 10px;
   padding: 15px 10px;
   border-bottom: 1px solid #eee;

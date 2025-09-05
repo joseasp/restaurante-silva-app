@@ -12,13 +12,16 @@
         <input type="date" id="dataFim" v-model="dataFim" />
       </div>
       <button class="gerar-btn" @click="gerarRelatorio">Gerar Relatório</button>
+      <!-- PASSO 1: BOTÃO DE IMPRESSÃO ADICIONADO -->
+      <button v-if="dadosRelatorio" @click="imprimirRelatorio" type="button" class="btn-imprimir">
+        🖨️ Imprimir
+      </button>
     </div>
 
     <!-- Seção de Resultados do Relatório -->
     <div v-if="dadosRelatorio" class="resultado-relatorio">
       <h2>Resultados para o Período</h2>
 
-      <!-- TEMPLATE SUBSTITUÍDO CONFORME SOLICITADO -->
       <div class="resultados-container">
         <!-- Cards Principais -->
         <div class="resultados-grid">
@@ -156,6 +159,73 @@ const gerarRelatorio = async () => {
     carregando.value = false
   }
 }
+
+// PASSO 2: FUNÇÃO DE IMPRESSÃO ADICIONADA
+const imprimirRelatorio = () => {
+  if (!dadosRelatorio.value) return
+
+  const printWindow = window.open('', '_blank')
+  const relatorio = dadosRelatorio.value
+  const inicio = new Date(dataInicio.value).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
+  const fim = new Date(dataFim.value).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
+
+  const relatorioHTML = `
+    <html>
+      <head>
+        <title>Relatório do Período</title>
+        <style>
+          body { font-family: sans-serif; margin: 20px; }
+          h1, h2 { text-align: center; }
+          .card-container { display: flex; justify-content: space-around; gap: 15px; text-align: center; margin: 20px 0; padding: 10px; background-color: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;}
+          .card { padding: 10px; flex-grow: 1; }
+          .card span { font-size: 1.2em; color: #6c757d; }
+          .card strong { font-size: 2em; display: block; }
+          .detalhes-pagamento { margin-top: 30px; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+          th { background-color: #f2f2f2; }
+        </style>
+      </head>
+      <body>
+        <h1>Relatório Financeiro</h1>
+        <h2>Período: ${inicio} a ${fim}</h2>
+
+        <div class="card-container">
+          <div class="card"><span>Total de Vendas</span><strong>${relatorio.totalVendas}</strong></div>
+          <div class="card"><span>Faturamento Bruto</span><strong>R$ ${relatorio.faturamentoBruto.toFixed(2)}</strong></div>
+          <div class="card"><span>Vendas à Vista</span><strong>R$ ${relatorio.vendasAVista.toFixed(2)}</strong></div>
+          <div class="card"><span>Entradas de Caixa</span><strong>R$ ${relatorio.entradasDeCaixa.toFixed(2)}</strong></div>
+        </div>
+
+        <div class="detalhes-pagamento">
+          <h3>Recebimentos por Forma de Pagamento</h3>
+          <table>
+            <thead><tr><th>Forma</th><th>Valor Recebido</th></tr></thead>
+            <tbody>
+              ${Object.entries(relatorio.recebimentosPorForma)
+                .map(
+                  ([forma, valor]) => `
+                <tr>
+                  <td>${forma}</td>
+                  <td>R$ ${valor.toFixed(2)}</td>
+                </tr>
+              `,
+                )
+                .join('')}
+            </tbody>
+          </table>
+        </div>
+      </body>
+    </html>
+  `
+
+  printWindow.document.write(relatorioHTML)
+  printWindow.document.close()
+  setTimeout(() => {
+    printWindow.print()
+    printWindow.close()
+  }, 250)
+}
 </script>
 
 <style scoped>
@@ -174,7 +244,7 @@ h1 {
 .filtro-periodo {
   display: flex;
   flex-wrap: wrap;
-  gap: 20px;
+  gap: 10px;
   justify-content: center;
   align-items: center;
   padding: 20px;
@@ -202,9 +272,9 @@ h1 {
   border-radius: 4px;
 }
 
-.gerar-btn {
+.gerar-btn,
+.btn-imprimir {
   padding: 10px 25px;
-  background-color: #28a745;
   color: white;
   border: none;
   border-radius: 4px;
@@ -213,9 +283,18 @@ h1 {
   transition: background-color 0.3s;
   align-self: flex-end;
 }
-
+.gerar-btn {
+  background-color: #28a745;
+}
 .gerar-btn:hover {
   background-color: #218838;
+}
+/* PASSO 3: ESTILO PARA O BOTÃO DE IMPRESSÃO */
+.btn-imprimir {
+  background-color: #6c757d; /* Cinza */
+}
+.btn-imprimir:hover {
+  background-color: #5c636a;
 }
 
 .resultado-relatorio {
@@ -228,7 +307,6 @@ h1 {
   margin-bottom: 25px;
 }
 
-/* ESTILOS ATUALIZADOS CONFORME SOLICITADO */
 .resultados-container {
   background-color: #fff;
   padding: 20px;
