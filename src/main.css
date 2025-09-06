@@ -1,0 +1,13 @@
+/* Adicione estas variáveis de cor ao seu arquivo CSS principal */
+body {
+  --q-primary: #db9000; /* Amarelo principal (usado em botões, abas ativas, etc.) */
+  --q-secondary: #26a69a; /* Um teal para contraste */
+  --q-accent: #9c27b0; /* Roxo para detalhes */
+
+  --q-dark: #1d1d1d;
+
+  --q-positive: #21ba45; /* Verde para sucesso */
+  --q-negative: #c10015; /* Vermelho para alertas/dívidas */
+  --q-info: #31ccec;
+  --q-warning: #f2c037;
+}

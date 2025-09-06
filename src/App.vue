@@ -1,53 +1,85 @@
 <template>
-  <header class="app-wide-header">
-    <nav class="main-nav">
-      <RouterLink to="/caderno">Caderno</RouterLink>
-      <RouterLink to="/produtos">Produtos</RouterLink>
-      <RouterLink to="/clientes">Clientes</RouterLink>
-      <RouterLink to="/contas-receber">Contas a Receber</RouterLink>
-      <RouterLink to="/relatorios">Relatórios</RouterLink>
-    </nav>
-  </header>
-  <main>
-    <RouterView />
-  </main>
+  <q-layout view="hHh lpR fFf">
+    <q-header elevated class="bg-primary text-white" height-hint="60">
+      <q-toolbar>
+        <!-- Logotipo do Restaurante (imagem completa) -->
+        <img
+          src="/logo-restaurante-completo.png"
+          class="logo-restaurante"
+          @click="$router.push('/caderno')"
+          style="cursor: pointer"
+        />
+
+        <q-space />
+
+        <q-tabs align="right">
+          <q-route-tab to="/caderno" label="Caderno" />
+          <q-route-tab to="/produtos" label="Produtos" />
+          <q-route-tab to="/clientes" label="Clientes" />
+          <q-route-tab to="/contas-receber" label="Contas a Receber" />
+          <q-route-tab to="/relatorios" label="Relatórios" />
+        </q-tabs>
+      </q-toolbar>
+    </q-header>
+
+    <q-page-container>
+      <router-view />
+    </q-page-container>
+
+    <!-- Logotipo do Desenvolvedor (sutil, no canto) -->
+    <div class="logo-dev-container">
+      <a href="https://seusite.com.br" target="_blank" rel="noopener noreferrer">
+        <img src="/logo-dev.png" alt="Desenvolvido por Apolinário Contabilidade" />
+      </a>
+    </div>
+  </q-layout>
 </template>
 
 <script setup>
-import { RouterLink, RouterView } from 'vue-router';
-import { useDataStore } from '@/stores/dataStore.js';
-import { onMounted } from 'vue';
+import { useDataStore } from '@/stores/dataStore.js'
+import { onMounted } from 'vue'
 
-const dataStore = useDataStore();
+const dataStore = useDataStore()
 
 onMounted(() => {
-  dataStore.initialize();
-});
+  dataStore.initialize()
+})
 </script>
 
 <style>
-  /* Estilos globais para a aplicação */
-  body {
-    margin: 0;
-    font-family: sans-serif;
-  }
+/* Estilos Globais */
+body {
+  --q-primary: #ffc107;
+  --q-secondary: #26a69a;
+  --q-accent: #9c27b0;
+  --q-dark: #1d1d1d;
+  --q-positive: #21ba45;
+  --q-negative: #c10015;
+  --q-info: #31ccec;
+  --q-warning: #f2c037;
+}
 
-  .app-wide-header {
-    background-color: #333;
-    padding: 10px 20px;
-  }
-  
-  .main-nav a {
-    color: white;
-    text-decoration: none;
-    margin-right: 20px;
-    font-size: 1.1em;
-    padding: 5px 0;
-  }
+/* Estilos para os Logotipos */
+.logo-restaurante {
+  height: 45px; /* Altura do logotipo no cabeçalho. Ajuste se necessário. */
+  width: auto;
+}
 
-  .main-nav a.router-link-exact-active {
-    color: #ffc107;
-    font-weight: bold;
-    border-bottom: 2px solid #ffc107;
-  }
+.logo-dev-container {
+  position: fixed;
+  bottom: 10px;
+  left: 10px;
+  z-index: 2000; /* Para ficar sobre outros elementos */
+}
+
+.logo-dev-container img {
+  height: 35px; /* Tamanho do seu logotipo no canto. Ajuste se necessário. */
+  width: auto;
+  opacity: 0.5; /* Efeito de transparência */
+  transition: opacity 0.3s ease;
+}
+
+.logo-dev-container img:hover {
+  opacity: 1; /* Fica 100% visível ao passar o mouse */
+}
 </style>

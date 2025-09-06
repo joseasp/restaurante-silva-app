@@ -1,69 +1,135 @@
 <template>
-  <div class="container">
-    <h1>Gestão de Produtos</h1>
+  <q-page padding>
+    <h1 class="text-h4 text-center q-mb-md">Gestão de Produtos</h1>
 
-    <form @submit.prevent="salvarProduto" class="product-form">
-      <input v-model="formProduto.nome" type="text" placeholder="Nome do Produto" required />
-      <input
-        v-model="formProduto.preco"
-        type="number"
-        step="0.01"
-        placeholder="Preço (R$)"
-        required
-      />
-      <div class="form-actions">
-        <button type="submit" class="btn-salvar">
-          {{ produtoEmEdicao ? 'Salvar Alterações' : 'Adicionar Produto' }}
-        </button>
-        <button v-if="produtoEmEdicao" type="button" @click="cancelarEdicao" class="btn-cancelar">
-          Cancelar
-        </button>
-      </div>
-    </form>
-
-    <div class="filter-container">
-      <label>
-        <input type="checkbox" v-model="mostrarInativos" />
-        Mostrar produtos inativos
-      </label>
-    </div>
-
-    <h2>Produtos Cadastrados</h2>
-    <ul class="product-list">
-      <li v-if="produtos.length === 0">Nenhum produto encontrado.</li>
-      <li v-for="produto in produtos" :key="produto.id" :class="{ inativo: !produto.ativo }">
-        <div class="info-produto">
-          <span>{{ produto.nome }}</span>
-          <span>R$ {{ produto.preco ? produto.preco.toFixed(2) : '0.00' }}</span>
+    <!-- FORMULÁRIO DE PRODUTO -->
+    <q-card flat bordered class="q-pa-md q-mb-lg">
+      <q-form @submit.prevent="salvarProduto">
+        <div class="row q-col-gutter-md">
+          <div class="col-12 col-md-8">
+            <q-input
+              outlined
+              v-model="formProduto.nome"
+              label="Nome do Produto"
+              :rules="[(val) => !!val || 'O nome é obrigatório']"
+              lazy-rules
+            />
+          </div>
+          <div class="col-12 col-md-4">
+            <q-input
+              outlined
+              v-model.number="formProduto.preco"
+              type="number"
+              step="0.01"
+              label="Preço"
+              prefix="R$"
+              :rules="[(val) => val !== null && val > 0, 'O preço deve ser maior que zero']"
+              lazy-rules
+            />
+          </div>
         </div>
-        <div class="acoes-produto">
-          <button @click="iniciarEdicao(produto)" class="btn-editar">✏️</button>
-          <button v-if="produto.ativo" @click="desativarProduto(produto)" class="btn-desativar">
-            Desativar
-          </button>
-          <button v-else @click="reativarProduto(produto)" class="btn-reativar">Reativar</button>
+        <div class="q-mt-md q-gutter-sm">
+          <q-btn
+            color="primary"
+            :label="produtoEmEdicao ? 'Salvar Alterações' : 'Adicionar Produto'"
+            type="submit"
+          />
+          <q-btn
+            flat
+            color="grey"
+            label="Cancelar"
+            v-if="produtoEmEdicao"
+            @click="cancelarEdicao"
+          />
         </div>
-      </li>
-    </ul>
+      </q-form>
+    </q-card>
 
-    <!-- Modal de PIN adicionado -->
+    <!-- LISTA DE PRODUTOS -->
+    <q-card flat bordered>
+      <q-list bordered separator>
+        <q-item>
+          <q-item-section>
+            <q-toggle v-model="mostrarInativos" label="Mostrar produtos inativos" />
+          </q-item-section>
+        </q-item>
+
+        <q-item v-if="produtos.length === 0">
+          <q-item-section class="text-grey-8"> Nenhum produto encontrado. </q-item-section>
+        </q-item>
+
+        <q-item
+          v-for="produto in produtos"
+          :key="produto.id"
+          :class="{ 'bg-grey-2': !produto.ativo }"
+          clickable
+          v-ripple
+        >
+          <q-item-section>
+            <q-item-label>{{ produto.nome }}</q-item-label>
+            <q-item-label caption>
+              {{
+                produto.preco
+                  ? produto.preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                  : 'R$ 0,00'
+              }}
+            </q-item-label>
+          </q-item-section>
+
+          <q-item-section side>
+            <div class="row items-center">
+              <q-btn flat round dense icon="edit" color="info" @click.stop="iniciarEdicao(produto)">
+                <q-tooltip>Editar</q-tooltip>
+              </q-btn>
+              <q-btn
+                v-if="produto.ativo"
+                flat
+                round
+                dense
+                color="negative"
+                icon="delete"
+                @click.stop="desativarProduto(produto)"
+              >
+                <q-tooltip>Desativar</q-tooltip>
+              </q-btn>
+              <q-btn
+                v-else
+                flat
+                round
+                dense
+                color="positive"
+                icon="undo"
+                @click.stop="reativarProduto(produto)"
+              >
+                <q-tooltip>Reativar</q-tooltip>
+              </q-btn>
+            </div>
+          </q-item-section>
+        </q-item>
+      </q-list>
+    </q-card>
+
+    <!-- Modal de PIN -->
     <PinModal
       :visible="mostrarPinModal"
       @close="mostrarPinModal = false"
       @success="executarAcaoPendente"
     />
-  </div>
+  </q-page>
 </template>
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 import { useDataStore } from '@/stores/dataStore.js'
-import { db } from '@/services/databaseService.js'
+import { db } from '@/services/databaseService.js' // Importando o db
 import PinModal from '@/components/PinModal.vue'
+import { useQuasar } from 'quasar'
+import { v4 as uuidv4 } from 'uuid';
 
+const $q = useQuasar()
 const dataStore = useDataStore()
 
-const getInitialForm = () => ({ nome: '', preco: '' })
+const getInitialForm = () => ({ nome: '', preco: null })
 const formProduto = ref(getInitialForm())
 const produtoEmEdicao = ref(null)
 const produtos = ref([])
@@ -73,37 +139,37 @@ const mostrarInativos = ref(false)
 const mostrarPinModal = ref(false)
 const acaoPendente = ref(null)
 
-// Função que lê do store e popula a lista local
+// *** FUNÇÃO ATUALIZADA PARA ORDENAR ALFABETICAMENTE ***
 const carregarProdutos = () => {
-  if (mostrarInativos.value) {
-    produtos.value = [...dataStore.produtos].sort((a, b) => a.nome.localeCompare(b.nome))
-  } else {
-    produtos.value = dataStore.produtosAtivos
+  if (!dataStore.produtos) {
+    produtos.value = []
+    return
   }
+
+  let produtosFiltrados = []
+  if (mostrarInativos.value) {
+    // Pega todos os produtos
+    produtosFiltrados = [...dataStore.produtos]
+  } else {
+    // Pega apenas os produtos ativos
+    produtosFiltrados = dataStore.produtos.filter((p) => p.ativo === true)
+  }
+
+  // Ordena a lista filtrada (seja ela qual for) por nome
+  produtos.value = produtosFiltrados.sort((a, b) => a.nome.localeCompare(b.nome))
 }
 
-// Observa o checkbox para recarregar a lista
+watch(() => dataStore.produtos, carregarProdutos, { deep: true, immediate: true })
 watch(mostrarInativos, carregarProdutos)
 
-// Observa as listas do store para manter a tela atualizada
-watch(
-  () => dataStore.produtos,
-  () => {
-    carregarProdutos()
-  },
-  { deep: true },
-)
-
 onMounted(() => {
-  // Garante que os dados do store sejam buscados ao montar
-  dataStore.fetchProdutos().then(() => {
-    carregarProdutos()
-  })
+  dataStore.fetchProdutos()
 })
 
 const iniciarEdicao = (produto) => {
   produtoEmEdicao.value = produto
   formProduto.value = { ...produto }
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 const cancelarEdicao = () => {
@@ -112,42 +178,66 @@ const cancelarEdicao = () => {
 }
 
 const salvarProduto = async () => {
-  if (!formProduto.value.nome || !formProduto.value.preco) {
-    alert('Por favor, preencha o nome e o preço.')
-    return
-  }
-
   if (produtoEmEdicao.value) {
     try {
       await db.produtos.update(produtoEmEdicao.value.id, {
         nome: formProduto.value.nome,
         preco: parseFloat(formProduto.value.preco),
       })
-      await dataStore.fetchProdutos() // Apenas atualiza o store
+      await dataStore.fetchProdutos()
+      $q.notify({
+        color: 'positive',
+        message: 'Produto atualizado com sucesso!',
+        icon: 'check_circle',
+      })
       cancelarEdicao()
     } catch (error) {
       console.error('Erro ao atualizar produto:', error)
+      $q.notify({
+        color: 'negative',
+        message: 'Erro ao atualizar produto.',
+        icon: 'report_problem',
+      })
     }
   } else {
     try {
       await db.produtos.add({
+        id: uuidv4(),
         nome: formProduto.value.nome,
         preco: parseFloat(formProduto.value.preco),
         ativo: true,
       })
-      await dataStore.fetchProdutos() // Apenas atualiza o store
+      await dataStore.fetchProdutos()
+      $q.notify({
+        color: 'positive',
+        message: 'Produto adicionado com sucesso!',
+        icon: 'check_circle',
+      })
       formProduto.value = getInitialForm()
     } catch (error) {
       console.error('Erro ao adicionar produto:', error)
+      $q.notify({
+        color: 'negative',
+        message: 'Erro ao adicionar produto.',
+        icon: 'report_problem',
+      })
     }
   }
 }
 
 const desativarProduto = (produto) => {
   acaoPendente.value = async () => {
-    // A lógica agora é executada após o PIN
-    await db.produtos.update(produto.id, { ativo: false })
-    await dataStore.fetchProdutos() // Atualiza o store
+    try {
+      await db.produtos.update(produto.id, { ativo: false })
+      await dataStore.fetchProdutos()
+      $q.notify({
+        color: 'positive',
+        message: 'Produto desativado com sucesso.',
+        icon: 'toggle_off',
+      })
+    } catch (error) {
+      console.error('Erro ao desativar produto:', error)
+    }
   }
   mostrarPinModal.value = true
 }
@@ -155,7 +245,12 @@ const desativarProduto = (produto) => {
 const reativarProduto = async (produto) => {
   try {
     await db.produtos.update(produto.id, { ativo: true })
-    await dataStore.fetchProdutos() // Atualiza o store
+    await dataStore.fetchProdutos()
+    $q.notify({
+      color: 'positive',
+      message: 'Produto reativado com sucesso.',
+      icon: 'toggle_on',
+    })
   } catch (error) {
     console.error('Erro ao reativar produto:', error)
   }
@@ -171,99 +266,5 @@ const executarAcaoPendente = () => {
 </script>
 
 <style scoped>
-.container {
-  max-width: 600px;
-  margin: 20px auto;
-  padding: 20px;
-  font-family: sans-serif;
-}
-h1,
-h2 {
-  text-align: center;
-}
-h2 {
-  margin-top: 30px;
-}
-.product-form {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-}
-.product-form input {
-  flex-grow: 1;
-  padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
-.filter-container {
-  margin-bottom: 20px;
-  text-align: center;
-}
-.product-list {
-  list-style: none;
-  padding: 0;
-}
-.product-list li {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 15px;
-  border-bottom: 1px solid #eee;
-}
-.product-list li.inativo {
-  background-color: #f8f9fa;
-  color: #adb5bd;
-}
-.product-list li.inativo .info-produto span {
-  text-decoration: line-through;
-}
-.info-produto {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.acoes-produto {
-  display: flex;
-  gap: 10px;
-}
-.acoes-produto button {
-  padding: 8px 12px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  color: white;
-  font-weight: bold;
-}
-.form-actions {
-  width: 100%;
-  display: flex;
-  gap: 10px;
-  margin-top: 10px;
-}
-.form-actions button {
-  padding: 10px;
-  border-radius: 4px;
-  border: none;
-  cursor: pointer;
-  font-weight: bold;
-}
-.btn-salvar {
-  flex-grow: 1;
-  background-color: #ffc107;
-  color: black;
-}
-.btn-cancelar {
-  background-color: #6c757d;
-  color: white;
-}
-.btn-editar {
-  background-color: #0d6efd;
-}
-.btn-desativar {
-  background-color: #dc3545;
-}
-.btn-reativar {
-  background-color: #198754;
-}
+/* Todo o CSS customizado foi removido. A estilização agora é controlada pelo Quasar. */
 </style>

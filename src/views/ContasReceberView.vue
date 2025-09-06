@@ -1,143 +1,235 @@
 <template>
-  <div class="contas-container">
-    <div class="lista-clientes">
-      <h2>Clientes com Histórico</h2>
-      <!-- PASSO 3: CAMPO DE BUSCA ADICIONADO -->
-      <div class="busca-container">
-        <input type="text" v-model="buscaCliente" placeholder="Buscar cliente..." />
-      </div>
-      <!-- PASSO 4: V-FOR MODIFICADO -->
-      <ul>
-        <li
-          v-for="cliente in clientesFiltrados"
-          :key="cliente.id"
-          @click="selecionarCliente(cliente)"
-          :class="{ active: clienteSelecionado && clienteSelecionado.id === cliente.id }"
-        >
-          <span>{{ cliente.nome }}</span>
-          <span
-            class="saldo"
-            :class="{ devedor: cliente.saldo > 0.01, credor: cliente.saldo < -0.01 }"
-          >
-            R$ {{ cliente.saldo.toFixed(2) }}
-          </span>
-        </li>
-      </ul>
-    </div>
+  <q-page padding class="row">
+    <q-splitter v-model="splitterModel" style="height: calc(100vh - 50px); width: 100%">
+      <template v-slot:before>
+        <q-list bordered separator>
+          <q-item-label header>Clientes com Histórico</q-item-label>
 
-    <div class="extrato-cliente">
-      <div v-if="!clienteSelecionado" class="placeholder-extrato">
-        <h2>Selecione um cliente para ver o extrato</h2>
-      </div>
-      <div v-else>
-        <h2>Extrato de: {{ clienteSelecionado.nome }}</h2>
-        <div
-          class="saldo-total"
-          :class="{
-            devedor: clienteSelecionado.saldo > 0.01,
-            credor: clienteSelecionado.saldo < -0.01,
-          }"
-        >
-          <span v-if="clienteSelecionado.saldo > 0.01"
-            >Saldo Devedor: R$ {{ clienteSelecionado.saldo.toFixed(2) }}</span
-          >
-          <span v-else-if="clienteSelecionado.saldo < -0.01"
-            >Crédito Disponível: R$ {{ Math.abs(clienteSelecionado.saldo).toFixed(2) }}</span
-          >
-          <span v-else>Saldo Zerado</span>
-        </div>
+          <q-input dense outlined v-model="buscaCliente" label="Buscar..." class="q-ma-sm">
+            <template v-slot:append>
+              <q-icon name="search" />
+            </template>
+          </q-input>
 
-        <!-- No topo da seção do extrato -->
-        <div class="extrato-actions">
-          <div class="filtro-periodo">
-            <label>De:</label>
-            <input type="date" v-model="filtroInicio" />
-            <label>Até:</label>
-            <input type="date" v-model="filtroFim" />
-          </div>
-          <button @click="imprimirExtrato" class="btn-imprimir">🖨️ Imprimir Extrato</button>
-        </div>
-
-        <form @submit.prevent="registrarPagamento" class="pagamento-form">
-          <input
-            type="number"
-            step="0.01"
-            placeholder="Valor do Pagamento"
-            v-model="valorPagamento"
-            required
-          />
-          <select v-model="formaPagamento">
-            <option disabled value="">Selecione a forma (opcional)</option>
-            <option>Dinheiro</option>
-            <option>PIX</option>
-            <option>Cartão</option>
-          </select>
-          <textarea
-            v-model="observacoesPagamento"
-            placeholder="Observações (opcional)"
-            rows="2"
-          ></textarea>
-          <button type="submit">Registrar Pagamento</button>
-        </form>
-
-        <ul class="lista-transacoes">
-          <li
-            v-for="t in transacoesFiltradas"
-            :key="t.id"
-            class="transacao-item"
-            :class="{
-              estornado: t.estornado,
-              'fundo-pagamento': t.tipo_transacao === 'PAGAMENTO' && !t.estornado,
-            }"
+          <q-item
+            v-for="cliente in clientesFiltrados"
+            :key="cliente.id"
+            clickable
+            v-ripple
+            @click="selecionarCliente(cliente)"
+            :active="clienteSelecionado && clienteSelecionado.id === cliente.id"
+            active-class="bg-amber-2"
           >
-            <div class="transacao-info">
-              <span class="data">{{
-                new Date(t.created_at || t.data_transacao).toLocaleString('pt-BR')
-              }}</span>
-              <span class="tipo-transacao">
-                {{ t.tipo_transacao }}
-                <em
-                  v-if="
-                    (t.tipo_transacao === 'PAGAMENTO' ||
-                      (t.tipo_transacao === 'VENDA' && t.metodo_pagamento === 'Pago')) &&
-                    t.forma_pagamento
-                  "
-                >
-                  ({{ t.forma_pagamento }})</em
-                >
-              </span>
-              <span :class="{ 'valor-positivo': t.valor > 0, 'valor-negativo': t.valor < 0 }">
-                R$ {{ t.valor > 0 ? '+' : '' }}{{ t.valor.toFixed(2) }}
-              </span>
-            </div>
-            <div class="transacao-acoes">
-              <button
-                v-if="t.tipo_transacao === 'PAGAMENTO' && !t.estornado"
-                @click="estornarPagamento(t)"
-                class="btn-estornar"
+            <q-item-section>
+              <q-item-label class="text-subtitle1">{{ cliente.nome }}</q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <q-item-label
+                :class="{
+                  'text-red': cliente.saldo > 0.01,
+                  'text-green-8': cliente.saldo < -0.01,
+                  'text-grey': cliente.saldo >= -0.01 && cliente.saldo <= 0.01,
+                }"
+                class="text-body1 text-weight-bold"
               >
-                🗑️
-              </button>
+                R$ {{ Math.abs(cliente.saldo).toFixed(2) }}
+              </q-item-label>
+            </q-item-section>
+          </q-item>
+        </q-list>
+      </template>
+
+      <template v-slot:after>
+        <div v-if="!clienteSelecionado" class="flex flex-center text-grey" style="height: 100%">
+          <h5>Selecione um cliente para ver o extrato</h5>
+        </div>
+
+        <q-card
+          v-else
+          flat
+          bordered
+          class="q-ma-sm"
+          style="height: 100%; display: flex; flex-direction: column"
+        >
+          <q-card-section>
+            <div class="text-h5">Extrato de: {{ clienteSelecionado.nome }}</div>
+            <div
+              class="text-h5"
+              :class="{
+                'text-red': clienteSelecionado.saldo > 0.01,
+                'text-green-8': clienteSelecionado.saldo < -0.01,
+              }"
+            >
+              <span v-if="clienteSelecionado.saldo > 0.01">
+                Saldo Devedor: R$ {{ clienteSelecionado.saldo.toFixed(2) }}
+              </span>
+              <span v-else-if="clienteSelecionado.saldo < -0.01">
+                Crédito Disponível: R$ {{ Math.abs(clienteSelecionado.saldo).toFixed(2) }}
+              </span>
+              <span v-else>Saldo Zerado</span>
             </div>
-            <div v-if="t.observacoes" class="observacoes-transacao">
-              <strong>Obs:</strong> {{ t.observacoes }}
-            </div>
-            <ul v-if="t.tipo_transacao === 'VENDA' && t.itens" class="itens-da-venda">
-              <li v-for="item in t.itens" :key="item.id">
-                - {{ item.quantidade }}x {{ item.nome_produto_congelado }}
-              </li>
-            </ul>
-          </li>
-        </ul>
-      </div>
-    </div>
+          </q-card-section>
+
+          <q-card-section class="row items-center q-gutter-md">
+            <q-input
+              dense
+              outlined
+              v-model="filtroInicio"
+              type="date"
+              label="De:"
+              stack-label
+              class="col"
+            />
+            <q-input
+              dense
+              outlined
+              v-model="filtroFim"
+              type="date"
+              label="Até:"
+              stack-label
+              class="col"
+            />
+            <q-btn
+              icon="print"
+              color="amber"
+              text-color="black"
+              @click="imprimirExtrato"
+              label="Imprimir Extrato"
+              class="col-auto"
+            />
+          </q-card-section>
+
+          <q-expansion-item
+            icon="payment"
+            label="Registrar Novo Pagamento"
+            header-class="bg-grey-2"
+            class="q-mx-md q-mb-md"
+            bordered
+          >
+            <q-card>
+              <q-card-section>
+                <div class="row q-col-gutter-sm">
+                  <div class="col-12 col-md-6">
+                    <q-input
+                      outlined
+                      v-model.number="valorPagamento"
+                      label="Valor do Pagamento"
+                      type="number"
+                      step="0.01"
+                      prefix="R$"
+                    />
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <q-select
+                      outlined
+                      v-model="formaPagamento"
+                      :options="['Dinheiro', 'PIX', 'Cartão']"
+                      label="Forma (opcional)"
+                      clearable
+                    />
+                  </div>
+                  <div class="col-12">
+                    <q-input
+                      outlined
+                      v-model="observacoesPagamento"
+                      label="Observações (opcional)"
+                      type="textarea"
+                      autogrow
+                    />
+                  </div>
+                </div>
+                <q-btn
+                  color="positive"
+                  label="Registrar Pagamento"
+                  @click="registrarPagamento"
+                  class="full-width q-mt-md"
+                />
+              </q-card-section>
+            </q-card>
+          </q-expansion-item>
+
+          <q-separator />
+
+          <q-scroll-area class="col">
+            <q-list separator>
+              <q-item
+                v-for="t in transacoesFiltradas"
+                :key="t.id"
+                :class="{
+                  'bg-grey-2 text-grey-6 text-strike': t.estornado,
+                  'bg-green-1': t.tipo_transacao === 'PAGAMENTO' && !t.estornado,
+                }"
+              >
+                <q-item-section>
+                  <q-item-label caption>
+                    {{ t.tipo_transacao }}
+                    <em
+                      v-if="
+                        (t.tipo_transacao === 'PAGAMENTO' ||
+                          (t.tipo_transacao === 'VENDA' && t.metodo_pagamento === 'Pago')) &&
+                        t.forma_pagamento
+                      "
+                    >
+                      ({{ t.forma_pagamento }})</em
+                    >
+                  </q-item-label>
+                  <q-item-label class="text-body1">{{
+                    new Date(t.created_at || t.data_transacao).toLocaleString('pt-BR')
+                  }}</q-item-label>
+
+                  <q-item-label
+                    v-if="t.observacoes"
+                    class="q-mt-sm bg-grey-3 q-pa-sm rounded-borders text-body2"
+                    style="white-space: pre-wrap"
+                  >
+                    <strong>Obs:</strong> {{ t.observacoes }}
+                  </q-item-label>
+                  <q-item-label
+                    v-if="t.tipo_transacao === 'VENDA' && t.itens"
+                    class="q-mt-sm text-body2"
+                  >
+                    <ul class="q-pl-md q-ma-none">
+                      <li v-for="item in t.itens" :key="item.id">
+                        {{ item.quantidade }}x {{ item.nome_produto_congelado }}
+                      </li>
+                    </ul>
+                  </q-item-label>
+                </q-item-section>
+
+                <q-item-section side>
+                  <q-item-label
+                    :class="{ 'text-red': t.valor > 0, 'text-green-8': t.valor < 0 }"
+                    class="text-weight-bold text-h6"
+                  >
+                    R$ {{ t.valor > 0 ? '+' : '' }}{{ t.valor.toFixed(2) }}
+                  </q-item-label>
+                  <div class="row items-center q-gutter-xs q-mt-xs">
+                    <q-btn
+                      v-if="t.tipo_transacao === 'PAGAMENTO' && !t.estornado"
+                      flat
+                      dense
+                      round
+                      color="negative"
+                      icon="delete"
+                      @click="estornarPagamento(t)"
+                    >
+                      <q-tooltip>Estornar Pagamento</q-tooltip>
+                    </q-btn>
+                  </div>
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-scroll-area>
+        </q-card>
+      </template>
+    </q-splitter>
 
     <PinModal
       :visible="mostrarPinModal"
       @close="mostrarPinModal = false"
       @success="executarAcaoPendente"
     />
-  </div>
+  </q-page>
 </template>
 
 <script setup>
@@ -146,9 +238,12 @@ import { useDataStore } from '@/stores/dataStore.js'
 import { db } from '@/services/databaseService.js'
 import PinModal from '@/components/PinModal.vue'
 import { useAuthStore } from '@/stores/authStore'
+import { v4 as uuidv4 } from 'uuid';
 
 const dataStore = useDataStore()
 const authStore = useAuthStore()
+
+const splitterModel = ref(30)
 
 const todosOsClientesComConta = ref([])
 const clienteSelecionado = ref(null)
@@ -175,7 +270,7 @@ const clientesFiltrados = computed(() => {
 const transacoesFiltradas = computed(() => {
   if (!clienteSelecionado.value) return []
   if (!filtroInicio.value || !filtroFim.value) {
-    return clienteSelecionado.value.transacoes // Retorna todas se não houver filtro
+    return clienteSelecionado.value.transacoes
   }
   return clienteSelecionado.value.transacoes.filter((t) => {
     const dataTransacao = t.data_transacao
@@ -250,15 +345,19 @@ const selecionarCliente = (cliente) => {
 }
 
 const registrarPagamento = async () => {
-  if (!clienteSelecionado.value || !valorPagamento.value) return
+  if (!clienteSelecionado.value || !valorPagamento.value) {
+    console.warn('Por favor, insira um valor para o pagamento.')
+    return
+  }
   const valor = parseFloat(valorPagamento.value)
   if (valor <= 0) {
-    alert('O valor do pagamento deve ser positivo.')
+    console.warn('O valor do pagamento deve ser positivo.')
     return
   }
   try {
     const clienteId = clienteSelecionado.value.id
     await db.transacoes.add({
+      id: uuidv4(),
       cliente_id: clienteId,
       tipo_transacao: 'PAGAMENTO',
       valor: -valor,
@@ -268,6 +367,8 @@ const registrarPagamento = async () => {
       forma_pagamento: formaPagamento.value || null,
       observacoes: observacoesPagamento.value,
     })
+
+    console.log('Pagamento registrado com sucesso!')
 
     valorPagamento.value = ''
     formaPagamento.value = ''
@@ -313,56 +414,122 @@ const imprimirExtrato = () => {
   const cliente = clienteSelecionado.value
   const transacoesParaImprimir = transacoesFiltradas.value.filter((t) => !t.estornado)
 
-  const corpoTabela = transacoesParaImprimir
+  const transacoesHTML = transacoesParaImprimir
     .map((t) => {
-      const valor = t.valor.toFixed(2)
-      const tipo = t.tipo_transacao
-      const detalhes =
-        t.tipo_transacao === 'VENDA' && t.itens
-          ? t.itens
-              .map((item) => `<li>${item.quantidade}x ${item.nome_produto_congelado}</li>`)
-              .join('')
-          : t.observacoes || ''
+      let detalhes = ''
+      if (t.tipo_transacao === 'VENDA' && t.itens) {
+        const itensHTML = t.itens
+          .map(
+            (item) => `
+            <div class="item">
+              <span>- ${item.quantidade}x ${item.nome_produto_congelado}</span>
+            </div>
+          `,
+          )
+          .join('')
+
+        let statusPagamentoHTML = ''
+        if (t.metodo_pagamento === 'Pago') {
+          statusPagamentoHTML = t.forma_pagamento ? `(Pagamento: ${t.forma_pagamento})` : '(PAGO)'
+        } else {
+          statusPagamentoHTML = '(A PRAZO)'
+        }
+        statusPagamentoHTML = `<div class="item"><span>${statusPagamentoHTML}</span></div>`
+
+        detalhes = `${itensHTML}${statusPagamentoHTML}<div class="item total-venda"><span>TOTAL VENDA</span><span>R$ ${t.valor.toFixed(2)}</span></div>`
+      } else if (t.tipo_transacao === 'PAGAMENTO') {
+        detalhes = `
+          <div class="item">
+            <span>PAGAMENTO RECEBIDO ${t.forma_pagamento ? `(${t.forma_pagamento})` : ''}</span>
+            <span class="credito">R$ ${t.valor.toFixed(2)}</span>
+          </div>
+        `
+      }
 
       return `
-          <tr>
-              <td>${new Date(t.created_at || t.data_transacao).toLocaleDateString('pt-BR')}</td>
-              <td>${tipo}</td>
-              <td><ul>${detalhes}</ul></td>
-              <td class="${t.valor > 0 ? 'debito' : 'credito'}">R$ ${valor}</td>
-          </tr>
+        <div class="transaction-block">
+          <div>Data: ${new Date(t.created_at || t.data_transacao).toLocaleString('pt-BR')}</div>
+          ${detalhes}
+        </div>
       `
     })
-    .join('')
+    .join('<div class="separator">----------------------------------------</div>')
 
   const extratoHTML = `
     <html>
       <head>
         <title>Extrato de ${cliente.nome}</title>
         <style>
-          body { font-family: sans-serif; } table { width: 100%; border-collapse: collapse; }
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; } th { background-color: #f2f2f2; }
-          ul { margin: 0; padding-left: 15px; list-style-position: inside; } .debito { color: red; } .credito { color: green; }
+          body {
+            font-family: 'Courier New', Courier, monospace;
+            color: #000;
+          }
+          .receipt {
+            width: 302px; /* Largura comum de impressora térmica de 80mm */
+            margin: 0 auto;
+            padding: 10px;
+          }
+          .header { text-align: center; margin-bottom: 10px; }
+          .header h1 { margin: 0; font-size: 16px; }
+          .header p { margin: 2px 0; font-size: 12px; }
+          .separator {
+            margin: 10px 0;
+            text-align: center;
+            overflow: hidden;
+            white-space: nowrap;
+          }
+          .item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            margin: 3px 0;
+          }
+          .total-venda {
+            font-weight: bold;
+          }
+          .total-final {
+            font-weight: bold;
+            font-size: 14px;
+            margin-top: 10px;
+            border-top: 1px dashed #000;
+            padding-top: 5px;
+          }
+          .signature {
+            margin-top: 40px;
+            border-top: 1px solid #000;
+            text-align: center;
+            font-size: 12px;
+            padding-top: 5px;
+          }
+          .transaction-block { font-size: 12px; }
+          .credito { color: green; }
         </style>
       </head>
       <body>
-        <h1>Extrato do Cliente: ${cliente.nome}</h1>
-        <h3>Saldo Devedor Atual: R$ ${cliente.saldo.toFixed(2)}</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Data</th>
-              <th>Operação</th>
-              <th>Detalhes</th>
-              <th>Valor</th>
-            </tr>
-          </thead>
-          <tbody>${corpoTabela}</tbody>
-        </table>
+        <div class="receipt">
+          <div class="header">
+            <h1>Restaurante Silva</h1>
+            <p>Rua Primeiro de Março, n 7</p>
+            <p>Telefone: (33) 98720-8003</p>
+          </div>
+          <div class="separator">----------------------------------------</div>
+          <div><strong>Cliente:</strong> ${cliente.nome}</div>
+          <div><strong>Data Emissão:</strong> ${new Date().toLocaleString('pt-BR')}</div>
+          <div class="separator">----------------------------------------</div>
+
+          ${transacoesHTML}
+
+          <div class="separator">----------------------------------------</div>
+          <div class="item total-final">
+            <span>SALDO FINAL:</span>
+            <span>R$ ${cliente.saldo.toFixed(2)}</span>
+          </div>
+
+
+        </div>
       </body>
     </html>`
 
-  // --- LÓGICA DE IMPRESSÃO APRIMORADA ---
   const iframe = document.createElement('iframe')
   iframe.style.position = 'absolute'
   iframe.style.width = '0'
@@ -376,244 +543,11 @@ const imprimirExtrato = () => {
   doc.write(extratoHTML)
   doc.close()
 
-  iframe.contentWindow.focus() // Foca no iframe para a impressão
+  iframe.contentWindow.focus()
   iframe.contentWindow.print()
 
-  // Remove o iframe do DOM após a impressão para limpar a memória
   setTimeout(() => {
     document.body.removeChild(iframe)
   }, 1000)
 }
 </script>
-
-<style scoped>
-.contas-container {
-  display: flex;
-  height: calc(100vh - 58px);
-}
-.lista-clientes {
-  width: 350px;
-  border-right: 1px solid #ddd;
-  overflow-y: auto;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-}
-.lista-clientes h2 {
-  padding: 20px;
-  margin: 0;
-  background: #f8f9fa;
-  border-bottom: 1px solid #ddd;
-  font-size: 1.2em;
-}
-/* ESTILO PARA O CONTAINER DA BUSCA */
-.busca-container {
-  padding: 10px 15px;
-  border-bottom: 1px solid #ddd;
-  background-color: #f8f9fa;
-}
-.busca-container input {
-  width: 100%;
-  padding: 8px;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-}
-.lista-clientes ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  flex-grow: 1;
-  overflow-y: auto;
-}
-.lista-clientes li {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 15px 20px;
-  cursor: pointer;
-  border-bottom: 1px solid #eee;
-}
-.lista-clientes li:hover {
-  background: #f0f0f0;
-}
-.lista-clientes li.active {
-  background: #ffc107;
-  color: black;
-  font-weight: bold;
-}
-.saldo {
-  font-weight: bold;
-}
-.saldo.devedor {
-  color: #dc3545;
-}
-.saldo.credor {
-  color: #198754;
-}
-
-.extrato-cliente {
-  flex-grow: 1;
-  padding: 20px;
-  overflow-y: auto;
-}
-.placeholder-extrato {
-  text-align: center;
-  color: #888;
-  margin-top: 50px;
-}
-.saldo-total {
-  font-size: 1.5em;
-  font-weight: bold;
-  margin: 10px 0 20px;
-}
-.saldo-total.devedor {
-  color: #dc3545;
-}
-.saldo-total.credor {
-  color: #198754;
-}
-
-.extrato-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #ddd;
-  gap: 15px;
-}
-.filtro-periodo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.filtro-periodo input {
-  padding: 8px;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-}
-.btn-imprimir {
-  padding: 10px 15px;
-  background-color: #4caf50;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 1em;
-  transition: background-color 0.2s;
-}
-.btn-imprimir:hover {
-  background-color: #45a049;
-}
-
-.pagamento-form {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  grid-template-areas:
-    'valor select'
-    'obs obs'
-    'botao botao';
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 30px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #ddd;
-}
-.pagamento-form input[type='number'] {
-  grid-area: valor;
-  padding: 10px;
-}
-.pagamento-form select {
-  grid-area: select;
-  padding: 10px;
-}
-.pagamento-form textarea {
-  grid-area: obs;
-  padding: 10px;
-}
-.pagamento-form button {
-  grid-area: botao;
-  padding: 10px;
-}
-
-.lista-transacoes {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-.transacao-item {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px;
-  padding: 15px 10px;
-  border-bottom: 1px solid #eee;
-}
-.transacao-info {
-  display: grid;
-  grid-template-columns: 160px 100px 1fr;
-  gap: 10px;
-  align-items: center;
-}
-.transacao-acoes {
-  justify-self: end;
-}
-.btn-estornar {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1.2em;
-  opacity: 0.6;
-  transition: opacity 0.2s;
-}
-.btn-estornar:hover {
-  opacity: 1;
-}
-.transacao-item.estornado {
-  background-color: #f8f9fa;
-  color: #adb5bd;
-  text-decoration: line-through;
-}
-.transacao-item.estornado .valor-positivo,
-.transacao-item.estornado .valor-negativo {
-  color: #adb5bd;
-}
-.fundo-pagamento {
-  background-color: #e8f5e9;
-}
-.transacao-item:last-child {
-  border-bottom: none;
-}
-.tipo-transacao em {
-  font-style: italic;
-  color: #666;
-}
-.valor-positivo {
-  color: #dc3545;
-  font-weight: bold;
-  text-align: right;
-}
-.valor-negativo {
-  color: #198754;
-  font-weight: bold;
-  text-align: right;
-}
-.itens-da-venda,
-.observacoes-transacao {
-  grid-column: 1 / -1;
-  padding-left: 20px;
-  margin-top: 8px;
-}
-.itens-da-venda {
-  list-style: none;
-  font-size: 0.9em;
-  color: #333;
-}
-.observacoes-transacao {
-  font-size: 0.9em;
-  color: #555;
-  white-space: pre-wrap;
-  background-color: #f8f9fa;
-  padding: 5px 10px;
-  border-radius: 4px;
-}
-</style>
