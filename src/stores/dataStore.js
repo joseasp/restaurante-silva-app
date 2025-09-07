@@ -105,8 +105,9 @@ export const useDataStore = defineStore('data', () => {
   async function syncData() {
   console.log("Iniciando rotina de sincronização...");
   
-  // Pega a última data de verificação, ou uma data muito antiga se for a primeira vez.
-  const ultimaVerificacao = localStorage.getItem('ultimaVerificacaoSync') || '1970-01-01T00:00:00Z';
+  // GARANTE um formato de data limpo, sem milissegundos, que o Supabase sempre entende.
+  const agoraISO = new Date().toISOString().split('.')[0] + "+00:00"; 
+  const ultimaVerificacao = localStorage.getItem('ultimaVerificacaoSync') || '1970-01-01T00:00:00+00:00';
 
   try {
     // --- DOWNLOAD DE ATUALIZAÇÕES ---
@@ -130,7 +131,7 @@ export const useDataStore = defineStore('data', () => {
     await syncTableDown('itens_transacao', db.itens_transacao);
 
     // Salva a data/hora ATUAL como a nova "última verificação"
-    localStorage.setItem('ultimaVerificacaoSync', new Date().toISOString());
+    localStorage.setItem('ultimaVerificacaoSync', agoraISO);
 
     // --- UPLOAD DE MUDANÇAS LOCAIS (Lógica existente e funcional) ---
     console.log("Verificando mudanças locais para enviar...");
