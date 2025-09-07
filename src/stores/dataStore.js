@@ -68,7 +68,10 @@ export const useDataStore = defineStore('data', () => {
           if (a.status_preparo === 'PENDENTE' && b.status_preparo === 'PRONTO') return -1
           if (a.status_preparo === 'PRONTO' && b.status_preparo === 'PENDENTE') return 1
         }
-        return (a.id || 0) - (b.id || 0)
+        if (a.created_at && b.created_at) {
+          return new Date(a.created_at) - new Date(b.created_at);
+        }
+        return (a.id || 0) - (b.id || 0);
       })
 
       transacoes.value = lancamentosCompletos
@@ -141,6 +144,16 @@ export const useDataStore = defineStore('data', () => {
         if (error) throw error;
         await db.itens_transacao.bulkUpdate(itensParaSync.map(i => ({ key: i.id, changes: { ultima_sincronizacao: new Date() } })));
         console.log(`${itensParaSync.length} itens de transação sincronizados.`);
+      }
+
+      // 5. Funcionários
+      const funcionariosParaSync = await db.funcionarios.filter(f => !f.ultima_sincronizacao).toArray();
+      if (funcionariosParaSync.length > 0) {
+        // O onConflict aqui deve ser no 'id', pois nomes podem se repetir entre empresas
+        const { error } = await supabase.from('funcionarios').upsert(funcionariosParaSync.map(({ ultima_sincronizacao, ...rest }) => rest), { onConflict: 'id' });
+        if (error) throw error;
+        await db.funcionarios.bulkUpdate(funcionariosParaSync.map(f => ({ key: f.id, changes: { ultima_sincronizacao: new Date() } })));
+        console.log(`${funcionariosParaSync.length} funcionários sincronizados.`);
       }
 
       console.log("Sincronização concluída.");

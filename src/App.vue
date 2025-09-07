@@ -6,7 +6,7 @@
         <img
           src="/logo-restaurante-completo.png"
           class="logo-restaurante"
-          @click="$router.push('/caderno')"
+          @click="recarregarPagina"
           style="cursor: pointer"
         />
 
@@ -28,7 +28,11 @@
 
     <!-- Logotipo do Desenvolvedor (sutil, no canto) -->
     <div class="logo-dev-container">
-      <a href="https://seusite.com.br" target="_blank" rel="noopener noreferrer">
+      <a
+        href="https://www.instagram.com/dudu_apolinario/"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
         <img src="/logo-dev.png" alt="Desenvolvido por Apolinário Contabilidade" />
       </a>
     </div>
@@ -44,6 +48,10 @@ const dataStore = useDataStore()
 onMounted(() => {
   dataStore.initialize()
 })
+
+const recarregarPagina = () => {
+  window.location.href = '/caderno'
+}
 </script>
 
 <style>
