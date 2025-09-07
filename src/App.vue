@@ -19,6 +19,9 @@
           <q-route-tab to="/contas-receber" label="Contas a Receber" />
           <q-route-tab to="/relatorios" label="Relatórios" />
         </q-tabs>
+
+        <!-- BOTÃO DE SYNC ADICIONADO -->
+        <q-btn flat round dense icon="sync" @click="forcarSync" class="q-ml-md" />
       </q-toolbar>
     </q-header>
 
@@ -52,6 +55,11 @@ onMounted(() => {
 const recarregarPagina = () => {
   window.location.href = '/caderno'
 }
+
+const forcarSync = () => {
+  console.log("Sincronização manual acionada!");
+  dataStore.syncData();
+};
 </script>
 
 <style>

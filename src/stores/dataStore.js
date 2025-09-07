@@ -103,64 +103,65 @@ export const useDataStore = defineStore('data', () => {
   }
 
   async function syncData() {
-    console.log("Iniciando rotina de sincronização...");
-    try {
-      // Sincroniza em ordem de dependência
-      
-      // 1. Clientes
-      const clientesParaSync = await db.clientes.filter(c => !c.ultima_sincronizacao).toArray();
-      if (clientesParaSync.length > 0) {
-        const { error } = await supabase.from('clientes').upsert(clientesParaSync.map(({ ultima_sincronizacao, ...rest }) => rest));
-        if (error) throw error;
-        await db.clientes.bulkUpdate(clientesParaSync.map(c => ({ key: c.id, changes: { ultima_sincronizacao: new Date() } })));
-        console.log(`${clientesParaSync.length} clientes sincronizados.`);
-      }
+  console.log("Iniciando rotina de sincronização...");
+  
+  // Pega a última data de verificação, ou uma data muito antiga se for a primeira vez.
+  const ultimaVerificacao = localStorage.getItem('ultimaVerificacaoSync') || '1970-01-01T00:00:00Z';
 
-      // 2. Produtos
-      const produtosParaSync = await db.produtos.filter(p => !p.ultima_sincronizacao).toArray();
-      if (produtosParaSync.length > 0) {
-        const { error } = await supabase.from('produtos').upsert(produtosParaSync.map(({ ultima_sincronizacao, ...rest }) => rest));
-        if (error) throw error;
-        await db.produtos.bulkUpdate(produtosParaSync.map(p => ({ key: p.id, changes: { ultima_sincronizacao: new Date() } })));
-        console.log(`${produtosParaSync.length} produtos sincronizados.`);
-      }
+  try {
+    // --- DOWNLOAD DE ATUALIZAÇÕES ---
+    console.log(`Buscando atualizações da nuvem desde: ${ultimaVerificacao}`);
 
-      // 3. Transações
-      const transacoesParaSync = await db.transacoes.filter(t => !t.ultima_sincronizacao).toArray();
-      if (transacoesParaSync.length > 0) {
-        // Renomeia cliente_id para o campo correto no Supabase se for diferente, ou garante que ele exista
-        const payload = transacoesParaSync.map(({ ultima_sincronizacao, ...rest }) => rest);
-        const { error } = await supabase.from('transacoes').upsert(payload);
-        if (error) throw error;
-        await db.transacoes.bulkUpdate(transacoesParaSync.map(t => ({ key: t.id, changes: { ultima_sincronizacao: new Date() } })));
-        console.log(`${transacoesParaSync.length} transações sincronizadas.`);
+    const syncTableDown = async (tableName, dbTable) => {
+      // Busca registros na nuvem que foram atualizados DEPOIS da nossa última verificação
+      const { data, error } = await supabase.from(tableName).select('*').gt('updated_at', ultimaVerificacao);
+      if (error) throw error;
+      if (data && data.length > 0) {
+        // Usa bulkPut, que insere ou atualiza os registros localmente
+        await dbTable.bulkPut(data);
+        console.log(`${data.length} registros baixados/atualizados para '${tableName}'.`);
       }
+    };
 
-      // 4. Itens de Transação
-      const itensParaSync = await db.itens_transacao.filter(i => !i.ultima_sincronizacao).toArray();
-      if (itensParaSync.length > 0) {
-        const payload = itensParaSync.map(({ ultima_sincronizacao, ...rest }) => rest);
-        const { error } = await supabase.from('itens_transacao').upsert(payload);
+    await syncTableDown('clientes', db.clientes);
+    await syncTableDown('produtos', db.produtos);
+    await syncTableDown('funcionarios', db.funcionarios);
+    await syncTableDown('transacoes', db.transacoes);
+    await syncTableDown('itens_transacao', db.itens_transacao);
+
+    // Salva a data/hora ATUAL como a nova "última verificação"
+    localStorage.setItem('ultimaVerificacaoSync', new Date().toISOString());
+
+    // --- UPLOAD DE MUDANÇAS LOCAIS (Lógica existente e funcional) ---
+    console.log("Verificando mudanças locais para enviar...");
+    const syncTableUp = async (tableName, dbTable) => {
+      const recordsToSync = await dbTable.filter(record => !record.ultima_sincronizacao).toArray();
+      if (recordsToSync.length > 0) {
+        const payload = recordsToSync.map(({ ultima_sincronizacao, ...rest }) => rest);
+        const { data, error } = await supabase.from(tableName).upsert(payload, { onConflict: 'id' }).select();
         if (error) throw error;
-        await db.itens_transacao.bulkUpdate(itensParaSync.map(i => ({ key: i.id, changes: { ultima_sincronizacao: new Date() } })));
-        console.log(`${itensParaSync.length} itens de transação sincronizados.`);
+        const updates = data.map(remoto => ({ key: remoto.id, changes: { ultima_sincronizacao: new Date() } }));
+        await dbTable.bulkUpdate(updates);
+        console.log(`${recordsToSync.length} registros enviados para '${tableName}'.`);
       }
+    };
 
-      // 5. Funcionários
-      const funcionariosParaSync = await db.funcionarios.filter(f => !f.ultima_sincronizacao).toArray();
-      if (funcionariosParaSync.length > 0) {
-        // O onConflict aqui deve ser no 'id', pois nomes podem se repetir entre empresas
-        const { error } = await supabase.from('funcionarios').upsert(funcionariosParaSync.map(({ ultima_sincronizacao, ...rest }) => rest), { onConflict: 'id' });
-        if (error) throw error;
-        await db.funcionarios.bulkUpdate(funcionariosParaSync.map(f => ({ key: f.id, changes: { ultima_sincronizacao: new Date() } })));
-        console.log(`${funcionariosParaSync.length} funcionários sincronizados.`);
-      }
+    await syncTableUp('clientes', db.clientes);
+    await syncTableUp('produtos', db.produtos);
+    await syncTableUp('transacoes', db.transacoes);
+    await syncTableUp('itens_transacao', db.itens_transacao);
+    await syncTableUp('funcionarios', db.funcionarios);
 
-      console.log("Sincronização concluída.");
-    } catch (error) {
-      console.error("ERRO DURANTE A SINCRONIZAÇÃO:", error);
-    }
+    // --- ATUALIZAR A TELA ---
+    await fetchClientes();
+    await fetchProdutos();
+    
+    console.log("Sincronização de duas vias concluída.");
+    
+  } catch (error) {
+    console.error("ERRO DURANTE A SINCRONIZAÇÃO:", error);
   }
+}
 
   async function criarClienteAvulsoPadrao() {
     const clienteAvulsoExiste = await db.clientes.where('nome').equalsIgnoreCase('Cliente Avulso').first();
