@@ -540,22 +540,21 @@ const selecionarClienteAvulso = () => {
   }
 }
 const adicionarItem = (produto) => {
-  if (produto.id && typeof produto.id === 'number') {
-    const itemExistente = pedidoAtual.value.itens.find((i) => i.produto_id === produto.id)
-    if (itemExistente) {
-      itemExistente.quantidade++
-      buscaProduto.value = ''
-      return
-    }
+  const itemExistente = pedidoAtual.value.itens.find(i => i.produto_id === produto.id);
+
+  if (itemExistente) {
+    itemExistente.quantidade++;
+  } else {
+    pedidoAtual.value.itens.push({
+      produto_id: produto.id,
+      nome_produto_congelado: produto.nome,
+      preco_unitario_congelado: produto.preco,
+      quantidade: 1,
+      created_at: new Date() // ADICIONA A DATA DE CRIAÇÃO AQUI
+    });
   }
-  pedidoAtual.value.itens.push({
-    produto_id: typeof produto.id === 'number' ? produto.id : null,
-    nome_produto_congelado: produto.nome,
-    preco_unitario_congelado: parseFloat(produto.preco),
-    quantidade: 1,
-  })
-  buscaProduto.value = ''
-}
+  buscaProduto.value = '';
+};
 const incrementarItem = (item) => {
   item.quantidade++
 }
@@ -700,9 +699,10 @@ const confirmarItemAvulso = () => {
     nome: itemAvulso.value.nome,
     preco: parseFloat(itemAvulso.value.preco),
     produto_id: null,
-  })
-  mostrarModalItemAvulso.value = false
-}
+    created_at: new Date() // ADICIONA A DATA DE CRIAÇÃO AQUI
+  });
+  mostrarModalItemAvulso.value = false;
+};
 
 const filterFn = (val, update) => {
   if (val === '') {
