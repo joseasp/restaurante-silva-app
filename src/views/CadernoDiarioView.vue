@@ -221,7 +221,7 @@
           </div>
           <div v-else>
             <q-card
-              v-for="lancamento in transactions"
+              v-for="lancamento in transactions || []"
               :key="lancamento.id"
               flat
               bordered
@@ -344,7 +344,7 @@
                     </q-btn>
                   </div>
                 </div>
-                <q-list dense padding class="q-ml-md" v-if="lancamento.itens.length > 0">
+                <q-list dense padding class="q-ml-md" v-if="lancamento.itens && lancamento.itens.length > 0">
                   <q-item v-for="item in lancamento.itens" :key="item.id" class="q-pa-none">
                     <q-item-section class="text-grey-8"
                       >- {{ item.quantidade }}x {{ item.nome_produto_congelado }}</q-item-section
@@ -445,7 +445,7 @@ import { useTransactions } from '@/composables/useTransactions.js'
 
 const $q = useQuasar()
 const dataStore = useDataStore()
-const { transactions, fetchTransactions } = useTransactions()
+const { transactions, fetchTransactions, addTransaction, updateTransaction } = useTransactions()
 
 const splitterModel = ref(35)
 
@@ -605,7 +605,7 @@ const lancarPedido = async () => {
     created_at: new Date(),
   }
 
-  await dataStore.lancarPedido(novaTransacao, pedidoAtual.value.itens)
+  await addTransaction({ ...novaTransacao, itens: pedidoAtual.value.itens });
 
   lancamentoEmEdicao.value = null
   pedidoAtual.value = getInitialPedido()
@@ -615,7 +615,7 @@ const lancarPedido = async () => {
 }
 
 const iniciarEdicaoLancamento = async (lancamento) => {
-  await dataStore.estornarLancamento(lancamento)
+  await updateTransaction(lancamento.id, { estornado: true });
   const clienteParaEditar = dataStore.todosOsClientes.find((c) => c.id === lancamento.cliente_id)
 
   if (clienteParaEditar && clienteParaEditar.tipo === 'EMPRESA') {
@@ -642,7 +642,7 @@ const iniciarEdicaoLancamento = async (lancamento) => {
 
 const estornarLancamento = (lancamento) => {
   acaoPendente.value = async () => {
-    await dataStore.estornarLancamento(lancamento)
+    await updateTransaction(lancamento.id, { estornado: true });
     $q.notify({ type: 'positive', message: 'Lançamento estornado.' })
   }
   mostrarPinModal.value = true
@@ -676,16 +676,16 @@ const alternarStatusPagamento = async (lancamento) => {
     return
   }
   const novoStatus = lancamento.metodo_pagamento === 'Não Pago' ? 'Pago' : 'Não Pago'
-  await dataStore.atualizarStatus(lancamento, { metodo_pagamento: novoStatus })
+  await updateTransaction(lancamento.id, { metodo_pagamento: novoStatus });
 }
 
 const alternarStatusPreparo = async (lancamento) => {
   const novoStatus = lancamento.status_preparo === 'PENDENTE' ? 'PRONTO' : 'PENDENTE'
-  await dataStore.atualizarStatus(lancamento, { status_preparo: novoStatus })
+  await updateTransaction(lancamento.id, { status_preparo: novoStatus });
 }
 
 const atualizarFormaPagamento = async (lancamento, novaForma) => {
-  await dataStore.atualizarStatus(lancamento, { forma_pagamento: novaForma })
+  await updateTransaction(lancamento.id, { forma_pagamento: novaForma });
 }
 
 const abrirModalItemAvulso = () => {
