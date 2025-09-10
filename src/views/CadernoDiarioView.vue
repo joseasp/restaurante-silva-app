@@ -213,7 +213,7 @@
       <template v-slot:after>
         <div class="q-pa-md">
           <div
-            v-if="!lancamentosDoDia || lancamentosDoDia.length === 0"
+            v-if="!transactions || transactions.length === 0"
             class="text-center text-grey q-mt-xl"
           >
             <q-icon name="inbox" size="xl" />
@@ -221,7 +221,7 @@
           </div>
           <div v-else>
             <q-card
-              v-for="lancamento in lancamentosDoDia"
+              v-for="lancamento in transactions"
               :key="lancamento.id"
               flat
               bordered
@@ -441,15 +441,16 @@ import { useDataStore } from '@/stores/dataStore.js'
 import { db } from '@/services/databaseService.js';
 import { DADOS_RESTAURANTE } from '@/config.js'
 import PinModal from '@/components/PinModal.vue'
+import { useTransactions } from '@/composables/useTransactions.js'
 
 const $q = useQuasar()
 const dataStore = useDataStore()
+const { transactions, fetchTransactions } = useTransactions()
 
 const splitterModel = ref(35)
 
 const clientesParaSelecao = computed(() => dataStore.clientesAtivos || [])
 const produtosParaSelecao = computed(() => dataStore.produtosAtivos || [])
-const lancamentosDoDia = computed(() => dataStore.transacoes || [])
 
 const hoje = new Date()
 hoje.setMinutes(hoje.getMinutes() - hoje.getTimezoneOffset())
@@ -478,7 +479,7 @@ const getInitialPedido = () => ({
 const pedidoAtual = ref(getInitialPedido())
 
 const resumoDiario = computed(() => {
-  const lancamentosValidos = (lancamentosDoDia.value || []).filter((l) => !l.estornado)
+  const lancamentosValidos = (transactions.value || []).filter((l) => !l.estornado)
   const totalVendas = lancamentosValidos.length
   const faturamento = lancamentosValidos.reduce((acc, l) => acc + l.valor, 0)
   return { totalVendas, faturamento }
@@ -579,7 +580,6 @@ const totalPedido = computed(() => {
 const carregarDadosIniciais = async () => {
   await dataStore.fetchClientes()
   await dataStore.fetchProdutos()
-  await dataStore.fetchTransacoesDoDia(dataSelecionada.value)
 }
 
 const lancarPedido = async () => {
@@ -808,14 +808,14 @@ const imprimirComprovante = (lancamento) => {
 }
 
 const imprimirCadernoDoDia = () => {
-  if (lancamentosDoDia.value.length === 0) {
+  if (transactions.value.length === 0) {
     $q.notify({ type: 'warning', message: 'Não há lançamentos para imprimir nesta data.' })
     return
   }
   const dataFormatadaParaPrint = new Date(dataSelecionada.value).toLocaleDateString('pt-BR', {
     timeZone: 'UTC',
   })
-  const corpoTabela = lancamentosDoDia.value
+  const corpoTabela = transactions.value
     .filter((l) => !l.estornado)
     .map((lancamento) => {
       const itensHTML = lancamento.itens
@@ -877,9 +877,9 @@ const imprimirCadernoDoDia = () => {
 }
 
 watch(dataSelecionada, (novaData) => {
-  dataStore.fetchTransacoesDoDia(novaData)
+  fetchTransactions(novaData)
   resumoVisivel.value = false
-})
+}, { immediate: true })
 
 onMounted(() => {
   carregarDadosIniciais()
