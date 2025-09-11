@@ -1,956 +1,627 @@
 <template>
-  <q-page padding>
-    <div class="flex justify-between items-center q-mb-md">
-      <div class="text-h4">{{ dataExibicao }}</div>
-      <div class="flex items-center q-gutter-md">
-        <q-input outlined dense v-model="dataSelecionada" type="date" style="width: 150px" />
-        <q-btn
-          @click="imprimirCadernoDoDia"
-          color="primary"
-          icon="print"
-          label="Imprimir Dia"
-          outline
-        />
+  <q-page class="caderno-page">
+    <!-- Page Header -->
+    <div class="page-header">
+      <div class="header-content">
+        <h4 class="page-title">
+          <q-icon name="book" class="q-mr-md" />
+          {{ formatSelectedDate }}
+        </h4>
+        
+        <div class="header-actions">
+          <q-input
+            v-model="selectedDate"
+            type="date"
+            outlined
+            dense
+            class="date-input"
+          />
+          
+          <q-btn
+            @click="printDailyReport"
+            color="primary"
+            icon="print"
+            label="Imprimir Dia"
+            outline
+            dense
+            class="print-btn"
+          />
+        </div>
       </div>
     </div>
 
-    <q-splitter v-model="splitterModel" style="height: calc(100vh - 150px)">
-      <template v-slot:before>
-        <div class="q-pa-md">
-          <div class="text-h5 q-mb-md">
-            {{ lancamentoEmEdicao ? 'Editando Lançamento' : 'Novo Lançamento' }}
+    <!-- Main Content -->
+    <div class="main-content">
+      <q-splitter
+        v-model="splitterModel"
+        :limits="[25, 75]"
+        class="full-height"
+      >
+        <!-- Left Panel - New Order Form -->
+        <template v-slot:before>
+          <div class="left-panel">
+            <NewOrderForm
+              v-model="currentOrder"
+              :is-editing="isEditing"
+              :submission-status="submissionStatus"
+              :is-submitting="isSubmitting"
+              @submit="handleOrderSubmit"
+              @cancel-edit="cancelEdit"
+            />
           </div>
-          <q-form @submit.prevent="lancarPedido" class="q-gutter-md">
-            <div v-if="statusEnvio" :class="{
-              'text-primary': statusEnvio === 'enviando',
-              'text-positive': statusEnvio === 'sucesso',
-              'text-negative': statusEnvio === 'erro',
-            }" class="q-mb-sm">
-              <q-spinner v-if="statusEnvio === 'enviando'" size="1em" class="q-mr-xs" />
-              <span v-if="statusEnvio === 'enviando'">Enviando lançamento...</span>
-              <span v-else-if="statusEnvio === 'sucesso'">Lançamento enviado com sucesso!</span>
-              <span v-else-if="statusEnvio === 'erro'">Erro ao enviar lançamento. Tente novamente.</span>
-            </div>
-            <!-- SELEÇÃO DE CLIENTE -->
-            <div v-if="!pedidoAtual.cliente">
-              <q-input
-                outlined
-                v-model="buscaCliente"
-                label="Buscar Cliente..."
-                dense
-                class="q-mb-xs"
-              >
-                <template v-slot:append>
-                  <q-icon name="search" />
-                </template>
-              </q-input>
-              <q-list bordered separator v-if="clientesFiltrados.length">
-                <q-item
-                  v-for="cliente in clientesFiltrados"
-                  :key="cliente.id"
-                  clickable
-                  v-ripple
-                  @click="selecionarCliente(cliente)"
-                >
-                  <q-item-section>{{ cliente.nome }}</q-item-section>
-                </q-item>
-              </q-list>
-              <q-btn
-                outline
-                color="primary"
-                @click="selecionarClienteAvulso"
-                label="Venda Avulsa"
-                class="full-width q-mt-sm"
-              />
-            </div>
-            <div v-else>
-              <q-chip
-                removable
-                @remove="removerCliente"
-                color="primary"
-                text-color="white"
-                icon="person"
-                :label="pedidoAtual.cliente.nome"
-              />
-            </div>
+        </template>
 
-            <!-- NOME DO FUNCIONÁRIO (EMPRESA) -->
-            <q-select
-              v-if="pedidoAtual.cliente && pedidoAtual.cliente.tipo === 'EMPRESA'"
-              v-model="pedidoAtual.nome_funcionario"
-              label="Nome do Funcionário"
-              outlined
-              dense
-              use-input
-              fill-input
-              hide-selected
-              input-debounce="0"
-              :options="funcionariosFiltrados"
-              :filter="filterFn"
-              new-value-mode="add"
-              @new-value="(val, done) => done(val)"
-              :rules="[]"
-            >
-              <template v-slot:no-option>
-                <q-item>
-                  <q-item-section class="text-grey">
-                    Nenhum funcionário encontrado. Digite para adicionar.
-                  </q-item-section>
-                </q-item>
-              </template>
-            </q-select>
-
-            <!-- SELEÇÃO DE PRODUTO -->
-            <div class="row q-col-gutter-sm items-center">
-              <div class="col">
-                <q-input
-                  outlined
-                  v-model="buscaProduto"
-                  label="Buscar Produto..."
-                  dense
-                  class="q-mb-xs"
-                >
-                  <template v-slot:append> <q-icon name="search" /> </template>
-                </q-input>
-                <q-list bordered separator v-if="produtosFiltrados.length">
-                  <q-item
-                    clickable
-                    v-ripple
-                    v-for="produto in produtosFiltrados"
-                    :key="produto.id"
-                    @click="adicionarItem(produto)"
-                  >
-                    <q-item-section>{{ produto.nome }}</q-item-section>
-                    <q-item-section side>R$ {{ produto.preco.toFixed(2) }}</q-item-section>
-                  </q-item>
-                </q-list>
-              </div>
-              <div class="col-auto">
-                <q-btn round dense color="primary" icon="add" @click="abrirModalItemAvulso">
-                  <q-tooltip>Adicionar Item Avulso</q-tooltip>
-                </q-btn>
-              </div>
-            </div>
-            <div class="text-subtitle1 q-mt-md">Itens do Pedido</div>
-            <div class="text-weight-bold">Total: R$ {{ totalPedido.toFixed(2) }}</div>
-            <q-separator class="q-my-sm" />
-            <q-list separator>
-              <q-item v-if="pedidoAtual.itens.length === 0">
-                <q-item-section class="text-grey text-center">
-                  Nenhum item adicionado
-                </q-item-section>
-              </q-item>
-              <q-item v-for="(item, index) in pedidoAtual.itens" :key="index">
-                <q-item-section>
-                  <q-item-label>{{ item.nome_produto_congelado }}</q-item-label>
-                  <q-item-label caption>
-                    R$ {{ (item.preco_unitario_congelado * item.quantidade).toFixed(2) }}
-                  </q-item-label>
-                </q-item-section>
-                <q-item-section side>
-                  <div class="flex items-center q-gutter-xs">
-                    <q-btn round dense flat icon="remove" @click="decrementarItem(item, index)" />
-                    <span class="text-body1 text-weight-bold">{{ item.quantidade }}</span>
-                    <q-btn round dense flat icon="add" @click="incrementarItem(item)" />
-                  </div>
-                </q-item-section>
-                <q-item-section side>
-                  <q-btn
-                    round
-                    dense
-                    flat
-                    color="negative"
-                    icon="close"
-                    @click="removerItem(index)"
-                  />
-                </q-item-section>
-              </q-item>
-            </q-list>
-
-            <q-input
-              v-model="pedidoAtual.observacoes"
-              outlined
-              type="textarea"
-              label="Observações"
-              dense
+        <!-- Right Panel - Orders List -->
+        <template v-slot:after>
+          <div class="right-panel">
+            <OrdersList
+              :orders="ordersOfDay"
+              :loading="ordersLoading"
+              @edit-order="handleEditOrder"
+              @cancel-order="handleCancelOrder"
+              @toggle-payment="handleTogglePayment"
+              @toggle-status="handleToggleStatus"
+              @change-payment-form="handleChangePaymentForm"
+              @print-order="handlePrintOrder"
             />
-
-            <q-btn-toggle
-              v-model="pedidoAtual.metodo_pagamento"
-              spread
-              no-caps
-              :toggle-color="pedidoAtual.metodo_pagamento === 'Pago' ? 'positive' : 'warning'"
-              color="white"
-              text-color="black"
-              :options="[
-                {
-                  label: 'Não Pago',
-                  value: 'Não Pago',
-                  disable: pedidoAtual.cliente && pedidoAtual.cliente.tipo === 'AVULSO',
-                },
-                { label: 'Pago', value: 'Pago' },
-              ]"
-            />
-
-            <q-select
-              v-if="pedidoAtual.metodo_pagamento === 'Pago'"
-              outlined
-              v-model="pedidoAtual.forma_pagamento_venda"
-              :options="['Dinheiro', 'PIX', 'Cartão']"
-              label="Forma de Pagamento (Opcional)"
-              dense
-              emit-value
-              map-options
-              clearable
-            />
-
-            <q-btn
-              type="submit"
-              color="positive"
-              size="lg"
-              class="full-width"
-              :label="lancamentoEmEdicao ? 'Salvar Alterações' : 'Lançar no Caderno'"
-              icon="check_circle"
-            />
-          </q-form>
-        </div>
-      </template>
-
-      <template v-slot:after>
-        <div class="q-pa-md">
-          <div
-            v-if="!transactions || transactions.length === 0"
-            class="text-center text-grey q-mt-xl"
-          >
-            <q-icon name="inbox" size="xl" />
-            <p>Nenhum lançamento para esta data.</p>
           </div>
-          <div v-else>
-            <q-card
-              v-for="lancamento in transactions || []"
-              :key="lancamento.id"
-              flat
-              bordered
-              class="q-mb-sm"
-              :class="{
-                'bg-amber-1': lancamento.status_preparo === 'PENDENTE' && !lancamento.estornado,
-                'bg-grey-3 text-grey-7 estornado-style': lancamento.estornado,
-              }"
-            >
-              <q-card-section>
-                <div class="flex items-start justify-between">
-                  <div class="col">
-                    <div class="text-weight-bold">
-                      {{ lancamento.cliente_nome }}
-                      <span
-                        v-if="lancamento.nome_funcionario_empresa"
-                        class="text-caption text-weight-regular"
-                      >
-                        ({{ lancamento.nome_funcionario_empresa }})
-                      </span>
-                    </div>
-                    <div class="text-h6 text-primary text-weight-bolder">
-                      R$ {{ lancamento.valor.toFixed(2) }}
-                    </div>
-                  </div>
-                  <div class="col-auto flex items-center q-gutter-sm">
-                    <q-badge
-                      :color="lancamento.status_preparo === 'PENDENTE' ? 'orange' : 'positive'"
-                      class="q-pa-sm cursor-pointer"
-                      @click="!lancamento.estornado && alternarStatusPreparo(lancamento)"
-                    >
-                      {{ lancamento.status_preparo }}
-                    </q-badge>
+        </template>
+      </q-splitter>
+    </div>
 
-                    <q-badge
-                      :color="lancamento.metodo_pagamento === 'Não Pago' ? 'negative' : 'positive'"
-                      class="q-pa-sm cursor-pointer"
-                      @click="!lancamento.estornado && alternarStatusPagamento(lancamento)"
-                    >
-                      {{ lancamento.metodo_pagamento }}
-                      <span
-                        v-if="lancamento.metodo_pagamento === 'Pago' && lancamento.forma_pagamento"
-                        class="q-ml-xs text-caption opacity-80"
-                      >
-                        ({{ lancamento.forma_pagamento }})
-                      </span>
-                    </q-badge>
-
-                    <q-btn
-                      v-if="lancamento.metodo_pagamento === 'Pago' && !lancamento.estornado"
-                      flat
-                      round
-                      dense
-                      icon="payment"
-                    >
-                      <q-tooltip>Alterar Forma de Pagamento</q-tooltip>
-                      <q-menu auto-close anchor="bottom middle" self="top middle">
-                        <q-btn-group flat>
-                          <q-btn
-                            flat
-                            label="Dinheiro"
-                            dense
-                            @click="atualizarFormaPagamento(lancamento, 'Dinheiro')"
-                            :class="{
-                              'bg-primary text-white': lancamento.forma_pagamento === 'Dinheiro',
-                            }"
-                          />
-                          <q-btn
-                            flat
-                            label="PIX"
-                            dense
-                            @click="atualizarFormaPagamento(lancamento, 'PIX')"
-                            :class="{
-                              'bg-primary text-white': lancamento.forma_pagamento === 'PIX',
-                            }"
-                          />
-                          <q-btn
-                            flat
-                            label="Cartão"
-                            dense
-                            @click="atualizarFormaPagamento(lancamento, 'Cartão')"
-                            :class="{
-                              'bg-primary text-white': lancamento.forma_pagamento === 'Cartão',
-                            }"
-                          />
-                          <q-btn
-                            flat
-                            dense
-                            icon="backspace"
-                            @click="atualizarFormaPagamento(lancamento, null)"
-                          >
-                            <q-tooltip>Limpar</q-tooltip>
-                          </q-btn>
-                        </q-btn-group>
-                      </q-menu>
-                    </q-btn>
-
-                    <q-btn flat round dense icon="more_vert" :disable="lancamento.estornado">
-                      <q-menu auto-close>
-                        <q-list style="min-width: 100px">
-                          <q-item clickable @click="iniciarEdicaoLancamento(lancamento)">
-                            <q-item-section avatar><q-icon name="edit" /></q-item-section>
-                            <q-item-section>Editar</q-item-section>
-                          </q-item>
-                          <q-item clickable @click="imprimirComprovante(lancamento)">
-                            <q-item-section avatar><q-icon name="print" /></q-item-section>
-                            <q-item-section>Imprimir</q-item-section>
-                          </q-item>
-                          <q-separator />
-                          <q-item
-                            clickable
-                            class="text-negative"
-                            @click="estornarLancamento(lancamento)"
-                          >
-                            <q-item-section avatar><q-icon name="delete" /></q-item-section>
-                            <q-item-section>Estornar</q-item-section>
-                          </q-item>
-                        </q-list>
-                      </q-menu>
-                    </q-btn>
-                  </div>
-                </div>
-                <q-list dense padding class="q-ml-md" v-if="lancamento.itens && lancamento.itens.length > 0">
-                  <q-item v-for="item in lancamento.itens" :key="item.id" class="q-pa-none">
-                    <q-item-section class="text-grey-8"
-                      >- {{ item.quantidade }}x {{ item.nome_produto_congelado }}</q-item-section
-                    >
-                  </q-item>
-                </q-list>
-
-                <q-banner dense class="bg-amber-2 text-dark q-mt-sm" v-if="lancamento.observacoes">
-                  <template v-slot:avatar> <q-icon name="info" /> </template>
-                  {{ lancamento.observacoes }}
-                </q-banner>
-              </q-card-section>
-            </q-card>
-
-            <!-- RESUMO DIÁRIO -->
-            <q-card flat bordered class="q-mt-lg">
-              <q-card-section horizontal>
-                <q-card-section class="col">
-                  <div>Total de Vendas</div>
-                  <div class="text-h6 text-weight-bold">
-                    <span v-if="resumoVisivel">{{ resumoDiario.totalVendas }}</span>
-                    <span v-else>••••</span>
-                  </div>
-                </q-card-section>
-                <q-separator vertical />
-                <q-card-section class="col">
-                  <div>Faturamento do Dia</div>
-                  <div class="text-h6 text-weight-bold text-positive">
-                    <span v-if="resumoVisivel">R$ {{ resumoDiario.faturamento.toFixed(2) }}</span>
-                    <span v-else>R$ ••••</span>
-                  </div>
-                </q-card-section>
-                <q-card-actions>
-                  <q-btn
-                    flat
-                    round
-                    :icon="resumoVisivel ? 'visibility_off' : 'visibility'"
-                    @click="revelarResumo"
-                  />
-                </q-card-actions>
-              </q-card-section>
-            </q-card>
-          </div>
-        </div>
-      </template>
-    </q-splitter>
-
-    <!-- MODAL ITEM AVULSO -->
-    <q-dialog v-model="mostrarModalItemAvulso">
-      <q-card style="width: 350px">
-        <q-card-section>
-          <div class="text-h6">Adicionar Item Avulso</div>
-        </q-card-section>
-        <q-card-section class="q-pt-none">
-          <q-form @submit.prevent="confirmarItemAvulso" class="q-gutter-md">
-            <q-input
-              v-model="itemAvulso.nome"
-              label="Descrição do Item"
-              outlined
-              dense
-              autofocus
-              :rules="[(val) => !!val || 'Campo obrigatório']"
-            />
-            <q-input
-              v-model.number="itemAvulso.preco"
-              label="Preço (R$)"
-              type="number"
-              step="0.01"
-              outlined
-              dense
-              :rules="[(val) => val > 0 || 'Preço deve ser maior que zero']"
-            />
-            <q-card-actions align="right">
-              <q-btn flat label="Cancelar" color="primary" v-close-popup />
-              <q-btn label="Confirmar" color="primary" type="submit" />
-            </q-card-actions>
-          </q-form>
-        </q-card-section>
-      </q-card>
-    </q-dialog>
-
+    <!-- PIN Modal for Protected Actions -->
     <PinModal
-      :visible="mostrarPinModal"
-      @close="mostrarPinModal = false"
-      @success="executarAcaoPendente"
+      :visible="showPinModal"
+      @close="showPinModal = false"
+      @success="executePendingAction"
     />
   </q-page>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-const statusEnvio = ref('')
 import { useQuasar } from 'quasar'
 import { useDataStore } from '@/stores/dataStore.js'
-import { db } from '@/services/databaseService.js'
-import { DADOS_RESTAURANTE } from '@/config.js'
-import PinModal from '@/components/PinModal.vue'
 import { useRealtimeTransactions } from '@/composables/useRealtimeTransactions.js'
-import { useTransactions } from '@/composables/useTransactions.js'
+import { db } from '@/services/databaseService.js'
+import { supabase } from '@/services/supabaseClient.js'
+import { DADOS_RESTAURANTE } from '@/config.js'
+
+import NewOrderForm from '@/components/caderno/NewOrderForm.vue'
+import OrdersList from '@/components/caderno/OrdersList.vue'
+import PinModal from '@/components/PinModal.vue'
 
 const $q = useQuasar()
 const dataStore = useDataStore()
-const { transactions, fetchTransactions, addTransaction, updateTransaction } = useTransactions()
 
+// Reactive state
 const splitterModel = ref(35)
+const isEditing = ref(false)
+const isSubmitting = ref(false)
+const submissionStatus = ref('') // 'sending', 'success', 'error'
+const showPinModal = ref(false)
+const pendingAction = ref(null)
 
-const clientesParaSelecao = computed(() => dataStore.clientesAtivos || [])
-const produtosParaSelecao = computed(() => dataStore.produtosAtivos || [])
+// Date handling
+const today = new Date()
+today.setMinutes(today.getMinutes() - today.getTimezoneOffset())
+const selectedDate = ref(today.toISOString().slice(0, 10))
 
-const hoje = new Date()
-hoje.setMinutes(hoje.getMinutes() - hoje.getTimezoneOffset())
-const dataSelecionada = ref(hoje.toISOString().slice(0, 10))
+// Orders data
+const { transactions: ordersOfDay, loading: ordersLoading } = useRealtimeTransactions(selectedDate)
 
-const { transactions: lancamentosDoDia } = useRealtimeTransactions(dataSelecionada)
-
-const buscaCliente = ref('')
-const buscaProduto = ref('')
-const lancamentoEmEdicao = ref(null)
-const funcionariosDaEmpresaSelecionada = ref([])
-const funcionariosFiltrados = ref([])
-
-const mostrarModalItemAvulso = ref(false)
-const itemAvulso = ref({ nome: '', preco: null })
-const mostrarPinModal = ref(false)
-const acaoPendente = ref(null)
-const resumoVisivel = ref(false)
-
-const getInitialPedido = () => ({
+// Order form data
+const getInitialOrder = () => ({
   cliente: null,
   itens: [],
   metodo_pagamento: 'Não Pago',
+  forma_pagamento: '',
   observacoes: '',
-  nome_funcionario: '',
-  forma_pagamento_venda: '',
+  nome_funcionario: ''
 })
 
-const pedidoAtual = ref(getInitialPedido())
+const currentOrder = ref(getInitialOrder())
 
-const resumoDiario = computed(() => {
-  const lancamentosValidos = (transactions.value || []).filter((l) => !l.estornado)
-  const totalVendas = lancamentosValidos.length
-  const faturamento = lancamentosValidos.reduce((acc, l) => acc + l.valor, 0)
-  return { totalVendas, faturamento }
+// Computed
+const formatSelectedDate = computed(() => {
+  if (!selectedDate.value) return ''
+  const [year, month, day] = selectedDate.value.split('-')
+  return `${day}/${month}/${year}`
 })
 
-const dataExibicao = computed(() => {
-  if (!dataSelecionada.value) return ''
-  const data = new Date(dataSelecionada.value)
-  data.setMinutes(data.getMinutes() + data.getTimezoneOffset())
-  const opcoes = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }
-  return new Intl.DateTimeFormat('pt-BR', opcoes).format(data)
-})
-
-const clientesFiltrados = computed(() => {
-  if (!buscaCliente.value) return []
-  return clientesParaSelecao.value.filter((c) =>
-    c.nome.toLowerCase().includes(buscaCliente.value.toLowerCase()),
-  )
-})
-
-const produtosFiltrados = computed(() => {
-  if (!buscaProduto.value) return []
-  return produtosParaSelecao.value.filter(
-    (p) => p && p.nome && p.nome.toLowerCase().includes(buscaProduto.value.toLowerCase()),
-  )
-})
-
-// Função de seleção de cliente removida (não utilizada no template)
-// Selecionar cliente (restaurado para funcionamento da lista)
-const selecionarCliente = async (cliente) => {
-  pedidoAtual.value.cliente = cliente
-  buscaCliente.value = ''
-  funcionariosDaEmpresaSelecionada.value = []
-  pedidoAtual.value.nome_funcionario = ''
-
-  if (cliente.tipo === 'EMPRESA') {
-    try {
-      const funcionarios = await db.funcionarios.where('cliente_id').equals(cliente.id).toArray()
-      funcionariosDaEmpresaSelecionada.value = funcionarios.map((f) => f.nome)
-      funcionariosFiltrados.value = funcionariosDaEmpresaSelecionada.value
-    } catch (err) {
-      console.error('Erro ao buscar funcionários:', err)
-      $q.notify({ type: 'negative', message: 'Falha ao carregar funcionários da empresa.' })
-    }
-  }
-}
-
-const removerCliente = () => {
-  pedidoAtual.value.cliente = null
-  pedidoAtual.value.metodo_pagamento = 'Não Pago'
-  funcionariosDaEmpresaSelecionada.value = []
-  pedidoAtual.value.nome_funcionario = ''
-}
-
-const selecionarClienteAvulso = () => {
-  const clienteAvulso = clientesParaSelecao.value.find((c) => c.nome === 'Cliente Avulso')
-  if (clienteAvulso) {
-    pedidoAtual.value.cliente = clienteAvulso
-    pedidoAtual.value.metodo_pagamento = 'Pago'
-  } else {
-    $q.notify({ type: 'negative', message: 'Cliente Avulso não encontrado.' })
-  }
-}
-const adicionarItem = (produto) => {
-  const itemExistente = pedidoAtual.value.itens.find(i => i.produto_id === produto.id);
-
-  if (itemExistente) {
-    itemExistente.quantidade++;
-  } else {
-    pedidoAtual.value.itens.push({
-      produto_id: produto.id,
-      nome_produto_congelado: produto.nome,
-      preco_unitario_congelado: produto.preco,
-      quantidade: 1,
-      created_at: new Date() // ADICIONA A DATA DE CRIAÇÃO AQUI
-    });
-  }
-  buscaProduto.value = '';
-};
-const incrementarItem = (item) => {
-  item.quantidade++
-}
-const decrementarItem = (item, index) => {
-  if (item.quantidade > 1) {
-    item.quantidade--
-  } else {
-    removerItem(index)
-  }
-}
-const removerItem = (index) => {
-  pedidoAtual.value.itens.splice(index, 1)
-}
-
-const totalPedido = computed(() => {
-  return pedidoAtual.value.itens.reduce(
-    (acc, item) => acc + item.preco_unitario_congelado * item.quantidade,
-    0,
-  )
-})
-
-const carregarDadosIniciais = async () => {
-  await dataStore.fetchClientes()
-  await dataStore.fetchProdutos()
-}
-
-// Evita múltiplos envios acelerados
-const isSubmitting = ref(false)
-let ultimoEnvioTs = 0
-
-const lancarPedido = async () => {
-  const agora = Date.now()
-  if (isSubmitting.value) {
-    $q.notify({ type: 'warning', message: 'Já estamos enviando o lançamento...' })
-    return
-  }
-  // Proteção contra double-click muito rápido (<500ms)
-  if (agora - ultimoEnvioTs < 500) {
-    $q.notify({ type: 'warning', message: 'Aguarde um instante...' })
-    return
-  }
-  ultimoEnvioTs = agora
-  if (!pedidoAtual.value.cliente || pedidoAtual.value.itens.length === 0) {
-    $q.notify({ type: 'warning', message: 'Selecione um cliente e adicione pelo menos um item.' })
+// Methods
+const handleOrderSubmit = async (orderData) => {
+  if (isSubmitting.value) return
+  
+  if (!orderData.cliente || orderData.itens.length === 0) {
+    $q.notify({
+      type: 'negative',
+      message: 'Selecione um cliente e adicione itens ao pedido'
+    })
     return
   }
 
-  const novaTransacao = {
-    cliente_id: pedidoAtual.value.cliente.id,
-    tipo_transacao: 'VENDA',
-    valor: totalPedido.value,
-    data_transacao: dataSelecionada.value,
-    metodo_pagamento: pedidoAtual.value.metodo_pagamento,
-    forma_pagamento:
-      pedidoAtual.value.metodo_pagamento === 'Pago'
-        ? pedidoAtual.value.forma_pagamento_venda
-        : null,
-    estornado: false,
-    status_preparo: 'PENDENTE',
-    observacoes: pedidoAtual.value.observacoes,
-    nome_funcionario_empresa: pedidoAtual.value.nome_funcionario,
-    created_at: new Date(),
-  }
-
-  statusEnvio.value = 'enviando'
-  isSubmitting.value = true
-  // Salva nome de funcionário digitado, se não existir ainda
-  if (
-    pedidoAtual.value.cliente &&
-    pedidoAtual.value.cliente.tipo === 'EMPRESA' &&
-    pedidoAtual.value.nome_funcionario &&
-    !funcionariosDaEmpresaSelecionada.value.includes(pedidoAtual.value.nome_funcionario)
-  ) {
-    try {
-      await db.funcionarios.add({
-        nome: pedidoAtual.value.nome_funcionario,
-        cliente_id: pedidoAtual.value.cliente.id,
-        created_at: new Date(),
-      })
-      funcionariosDaEmpresaSelecionada.value.push(pedidoAtual.value.nome_funcionario)
-  } catch {
-      // Se já existe, ignora
-    }
-  }
   try {
-    await dataStore.lancarPedido(novaTransacao, pedidoAtual.value.itens)
-    lancamentoEmEdicao.value = null
-    pedidoAtual.value = getInitialPedido()
-    buscaCliente.value = ''
-    funcionariosDaEmpresaSelecionada.value = []
-    statusEnvio.value = 'sucesso'
-    setTimeout(() => { statusEnvio.value = '' }, 2000)
-  } catch {
-    statusEnvio.value = 'erro'
-    setTimeout(() => { statusEnvio.value = '' }, 3000)
-  } finally {
-    // Dá um pequeno atraso para evitar spam de clique se a resposta for instantânea
-    setTimeout(() => { isSubmitting.value = false }, 400)
-  }
-}
+    submissionStatus.value = 'sending'
+    isSubmitting.value = true
 
-const iniciarEdicaoLancamento = async (lancamento) => {
-  await updateTransaction(lancamento.id, { estornado: true });
-  const clienteParaEditar = dataStore.todosOsClientes.find((c) => c.id === lancamento.cliente_id)
-
-  if (clienteParaEditar && clienteParaEditar.tipo === 'EMPRESA') {
-    try {
-      const funcionarios = await db.funcionarios
-        .where('cliente_id')
-        .equals(clienteParaEditar.id)
-        .toArray()
-      funcionariosDaEmpresaSelecionada.value = funcionarios.map((f) => f.nome)
-    } catch (error) {
-      console.error('Erro ao buscar funcionários na edição:', error)
+    // Prevent rapid submissions
+    const now = Date.now()
+    if (now - lastSubmissionTime < 500) {
+      $q.notify({
+        type: 'warning',
+        message: 'Aguarde um momento...'
+      })
+      return
     }
-  } else {
-    funcionariosDaEmpresaSelecionada.value = []
+    lastSubmissionTime = now
+
+    // Prepare transaction data
+    const transactionData = {
+      cliente_id: orderData.cliente.id,
+      valor: orderData.itens.reduce((sum, item) => 
+        sum + (item.preco_unitario_congelado * item.quantidade), 0
+      ),
+      data_transacao: selectedDate.value,
+      tipo_transacao: 'VENDA',
+      metodo_pagamento: orderData.metodo_pagamento,
+      forma_pagamento: orderData.forma_pagamento || '',
+      status_preparo: 'PENDENTE',
+      observacoes: orderData.observacoes || '',
+      nome_funcionario_empresa: orderData.nome_funcionario || '',
+      created_at: new Date(),
+    }
+
+    // Save employee if needed
+    if (orderData.cliente.tipo === 'EMPRESA' && 
+        orderData.nome_funcionario && 
+        !await employeeExists(orderData.cliente.id, orderData.nome_funcionario)) {
+      await saveEmployee(orderData.cliente.id, orderData.nome_funcionario)
+    }
+
+    // Submit order
+    await dataStore.lancarPedido(transactionData, orderData.itens)
+
+    // Reset form
+    currentOrder.value = getInitialOrder()
+    isEditing.value = false
+    submissionStatus.value = 'success'
+    
+    setTimeout(() => {
+      submissionStatus.value = ''
+    }, 2000)
+
+  } catch (error) {
+    console.error('Erro ao lançar pedido:', error)
+    submissionStatus.value = 'error'
+    setTimeout(() => {
+      submissionStatus.value = ''
+    }, 3000)
+  } finally {
+    setTimeout(() => {
+      isSubmitting.value = false
+    }, 400)
   }
-
-  pedidoAtual.value.cliente = clienteParaEditar
-  pedidoAtual.value.itens = JSON.parse(JSON.stringify(lancamento.itens))
-  pedidoAtual.value.metodo_pagamento = lancamento.metodo_pagamento
-  pedidoAtual.value.observacoes = lancamento.observacoes || ''
-  pedidoAtual.value.nome_funcionario = lancamento.nome_funcionario_empresa || ''
-  pedidoAtual.value.forma_pagamento_venda = lancamento.forma_pagamento || ''
-
-  lancamentoEmEdicao.value = lancamento
-  $q.notify({ type: 'info', message: 'Lançamento movido para o formulário de edição.' })
 }
 
-const estornarLancamento = (lancamento) => {
-  acaoPendente.value = async () => {
-    await updateTransaction(lancamento.id, { estornado: true });
-    $q.notify({ type: 'positive', message: 'Lançamento estornado.' })
+const handleEditOrder = async (order) => {
+  // Mark original order as cancelled (estornado)
+  pendingAction.value = async () => {
+    try {
+      await updateTransaction(order.id, { estornado: true })
+      
+      // Load order data into form
+      const client = dataStore.todosOsClientes.find(c => c.id === order.cliente_id)
+      currentOrder.value = {
+        cliente: client,
+        itens: [...order.itens],
+        metodo_pagamento: order.metodo_pagamento,
+        forma_pagamento: order.forma_pagamento || '',
+        observacoes: order.observacoes || '',
+        nome_funcionario: order.nome_funcionario_empresa || ''
+      }
+      
+      isEditing.value = true
+      
+      $q.notify({
+        type: 'info',
+        message: 'Pedido carregado para edição'
+      })
+    } catch (error) {
+      console.error('Erro ao carregar pedido para edição:', error)
+      $q.notify({
+        type: 'negative',
+        message: 'Erro ao carregar pedido'
+      })
+    }
   }
-  mostrarPinModal.value = true
+  
+  showPinModal.value = true
 }
 
-const executarAcaoPendente = () => {
-  if (acaoPendente.value) {
-    acaoPendente.value()
+const handleCancelOrder = (order) => {
+  pendingAction.value = async () => {
+    try {
+      await updateTransaction(order.id, { estornado: true })
+      $q.notify({
+        type: 'positive',
+        message: 'Pedido estornado com sucesso'
+      })
+    } catch (error) {
+      console.error('Erro ao estornar pedido:', error)
+      $q.notify({
+        type: 'negative',
+        message: 'Erro ao estornar pedido'
+      })
+    }
   }
-  mostrarPinModal.value = false
-  acaoPendente.value = null
+  
+  showPinModal.value = true
 }
 
-const revelarResumo = () => {
-  if (resumoVisivel.value) {
-    resumoVisivel.value = false
-    return
-  }
-  acaoPendente.value = () => {
-    resumoVisivel.value = true
-  }
-  mostrarPinModal.value = true
-}
-
-const alternarStatusPagamento = async (lancamento) => {
-  if (lancamento.cliente_nome === 'Cliente Avulso') {
+const handleTogglePayment = async (order) => {
+  if (order.cliente_nome === 'Cliente Avulso') {
     $q.notify({
       type: 'warning',
-      message: 'Não é possível alterar o status de pagamento para uma Venda Avulsa.',
-    })
-    return
-  }
-  const novoStatus = lancamento.metodo_pagamento === 'Não Pago' ? 'Pago' : 'Não Pago'
-  await updateTransaction(lancamento.id, { metodo_pagamento: novoStatus });
-}
-
-const alternarStatusPreparo = async (lancamento) => {
-  const novoStatus = lancamento.status_preparo === 'PENDENTE' ? 'PRONTO' : 'PENDENTE'
-  await updateTransaction(lancamento.id, { status_preparo: novoStatus });
-}
-
-const atualizarFormaPagamento = async (lancamento, novaForma) => {
-  await updateTransaction(lancamento.id, { forma_pagamento: novaForma });
-}
-
-const abrirModalItemAvulso = () => {
-  itemAvulso.value = { nome: '', preco: null }
-  mostrarModalItemAvulso.value = true
-}
-
-const confirmarItemAvulso = () => {
-  adicionarItem({
-    id: `avulso-${Date.now()}`,
-    nome: itemAvulso.value.nome,
-    preco: parseFloat(itemAvulso.value.preco),
-    produto_id: null,
-    created_at: new Date() // ADICIONA A DATA DE CRIAÇÃO AQUI
-  });
-  mostrarModalItemAvulso.value = false;
-};
-
-const filterFn = (val, update) => {
-  if (val === '') {
-    update(() => {
-      funcionariosFiltrados.value = funcionariosDaEmpresaSelecionada.value
+      message: 'Não é possível alterar status de pagamento para venda avulsa'
     })
     return
   }
 
-  update(() => {
-    const needle = val.toLowerCase()
-    funcionariosFiltrados.value = funcionariosDaEmpresaSelecionada.value.filter(
-      (v) => v.toLowerCase().indexOf(needle) > -1,
-    )
-  })
+  try {
+    const newStatus = order.metodo_pagamento === 'Não Pago' ? 'Pago' : 'Não Pago'
+    await updateTransaction(order.id, { 
+      metodo_pagamento: newStatus,
+      forma_pagamento: newStatus === 'Não Pago' ? '' : order.forma_pagamento
+    })
+  } catch (error) {
+    console.error('Erro ao alterar status de pagamento:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Erro ao alterar status de pagamento'
+    })
+  }
 }
 
-const imprimirComprovante = (lancamento) => {
-  const dataImpressao = new Date().toLocaleString('pt-BR')
-  const itensHTML = lancamento.itens
-    .map(
-      (item) => `
-      <div class="item-line">
-        <span>${item.quantidade}x ${item.nome_produto_congelado} (${item.preco_unitario_congelado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})</span>
-        <span>${(item.quantidade * item.preco_unitario_congelado).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+const handleToggleStatus = async (order) => {
+  try {
+    const newStatus = order.status_preparo === 'PENDENTE' ? 'PRONTO' : 'PENDENTE'
+    await updateTransaction(order.id, { status_preparo: newStatus })
+  } catch (error) {
+    console.error('Erro ao alterar status de preparo:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Erro ao alterar status de preparo'
+    })
+  }
+}
+
+const handleChangePaymentForm = async (order, newForm) => {
+  try {
+    await updateTransaction(order.id, { forma_pagamento: newForm || '' })
+  } catch (error) {
+    console.error('Erro ao alterar forma de pagamento:', error)
+    $q.notify({
+      type: 'negative',
+      message: 'Erro ao alterar forma de pagamento'
+    })
+  }
+}
+
+const handlePrintOrder = (order) => {
+  printOrderReceipt(order)
+}
+
+const cancelEdit = () => {
+  currentOrder.value = getInitialOrder()
+  isEditing.value = false
+  submissionStatus.value = ''
+}
+
+const executePendingAction = () => {
+  if (pendingAction.value) {
+    pendingAction.value()
+    pendingAction.value = null
+  }
+  showPinModal.value = false
+}
+
+// Helper functions
+let lastSubmissionTime = 0
+
+const updateTransaction = async (id, updates) => {
+  const { error } = await supabase
+    .from('transacoes')
+    .update(updates)
+    .eq('id', id)
+  
+  if (error) throw error
+  
+  await db.transacoes.update(id, updates)
+}
+
+const employeeExists = async (clienteId, employeeName) => {
+  const existing = await db.funcionarios
+    .where('cliente_id').equals(clienteId)
+    .and(emp => emp.nome.toLowerCase() === employeeName.toLowerCase())
+    .first()
+  return !!existing
+}
+
+const saveEmployee = async (clienteId, employeeName) => {
+  try {
+    await db.funcionarios.add({
+      nome: employeeName,
+      cliente_id: clienteId,
+      created_at: new Date(),
+    })
+  } catch (error) {
+    console.error('Erro ao salvar funcionário:', error)
+  }
+}
+
+const printDailyReport = () => {
+  // Implementation for daily report printing
+  const validOrders = ordersOfDay.value.filter(order => !order.estornado)
+  
+  if (validOrders.length === 0) {
+    $q.notify({
+      type: 'warning',
+      message: 'Nenhum pedido encontrado para imprimir'
+    })
+    return
+  }
+
+  // Create print content
+  const printContent = generateDailyReportHTML(validOrders)
+  
+  // Open print window
+  const printWindow = window.open('', '_blank')
+  printWindow.document.write(printContent)
+  printWindow.document.close()
+  
+  setTimeout(() => {
+    printWindow.print()
+    printWindow.close()
+  }, 250)
+}
+
+const printOrderReceipt = (order) => {
+  const receiptHTML = generateOrderReceiptHTML(order)
+  
+  const printWindow = window.open('', '_blank')
+  printWindow.document.write(receiptHTML)
+  printWindow.document.close()
+  
+  setTimeout(() => {
+    printWindow.print()
+    printWindow.close()
+  }, 250)
+}
+
+const generateDailyReportHTML = (orders) => {
+  const totalValue = orders.reduce((sum, order) => sum + order.valor, 0)
+  const date = formatSelectedDate.value
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Relatório Diário - ${date}</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { text-align: center; color: #db9000; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .summary { background: #f5f5f5; padding: 15px; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #db9000; color: white; }
+        .total { font-weight: bold; background-color: #f9f9f9; }
+        .footer { text-align: center; margin-top: 30px; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>${DADOS_RESTAURANTE.nome_fantasia}</h1>
+        <p>Relatório Diário - ${date}</p>
+        <p>${DADOS_RESTAURANTE.endereco} - ${DADOS_RESTAURANTE.telefone}</p>
       </div>
-    `,
-    )
-    .join('')
-
-  const observacoesHTML = lancamento.observacoes
-    ? `<div class="section"><strong>Observações:</strong><p>${lancamento.observacoes}</p></div>`
-    : ''
-
-  const funcionarioHTML = lancamento.nome_funcionario_empresa
-    ? `(${lancamento.nome_funcionario_empresa})`
-    : ''
-
-  const comprovanteHTML = `
-    <html>
-      <head>
-        <title>Comprovante</title>
-        <style>
-          body { font-family: 'Courier New', Courier, monospace; width: 300px; font-size: 12px; }
-          .header, .footer { text-align: center; }
-          .header h3 { margin: 0; }
-          .header p { margin: 2px 0; }
-          hr { border: none; border-top: 1px dashed #000; margin: 5px 0; }
-          .section { margin: 10px 0; }
-          .item-line { display: flex; justify-content: space-between; }
-          .total { font-weight: bold; font-size: 14px; text-align: right; }
-          .signature { margin-top: 25px; text-align: center; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h3>${DADOS_RESTAURANTE.nome_fantasia}</h3>
-          <p>${DADOS_RESTAURANTE.endereco}</p>
-          <p>Telefone: ${DADOS_RESTAURANTE.telefone}</p>
-        </div>
-        <hr>
-        <div class="section">
-          <p><strong>COMPROVANTE NÃO FISCAL</strong></p>
-          <p>Data: ${dataImpressao}</p>
-        </div>
-        <hr>
-        <div class="section">
-          <p><strong>Cliente:</strong> ${lancamento.cliente_nome} ${funcionarioHTML}</p>
-        </div>
-        <div class="section">
-          <strong>Itens:</strong>
-          ${itensHTML}
-        </div>
-        ${observacoesHTML}
-        <hr>
-        <div class="total">
-          <p>TOTAL: ${lancamento.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
-        </div>
-        <hr>
-        <div class="signature">
-            <p>_____________________________</p>
-            <p>Assinatura</p>
-        </div>
-      </body>
+      
+      <div class="summary">
+        <h3>Resumo do Dia</h3>
+        <p><strong>Total de Pedidos:</strong> ${orders.length}</p>
+        <p><strong>Faturamento Total:</strong> R$ ${totalValue.toFixed(2)}</p>
+      </div>
+      
+      <table>
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Itens</th>
+            <th>Valor</th>
+            <th>Pagamento</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${orders.map(order => `
+            <tr>
+              <td>${order.cliente_nome}</td>
+              <td>${order.itens.map(item => `${item.quantidade}x ${item.nome}`).join(', ')}</td>
+              <td>R$ ${order.valor.toFixed(2)}</td>
+              <td>${order.metodo_pagamento}</td>
+              <td>${order.status_preparo}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+        <tfoot>
+          <tr class="total">
+            <td colspan="2"><strong>TOTAL</strong></td>
+            <td><strong>R$ ${totalValue.toFixed(2)}</strong></td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+      </table>
+      
+      <div class="footer">
+        <p>Relatório gerado em ${new Date().toLocaleString('pt-BR')}</p>
+      </div>
+    </body>
     </html>
   `
-
-  const iframe = document.createElement('iframe')
-  iframe.style.position = 'absolute'
-  iframe.style.width = '0'
-  iframe.style.height = '0'
-  iframe.style.border = '0'
-  document.body.appendChild(iframe)
-  const doc = iframe.contentWindow.document
-  doc.open()
-  doc.write(comprovanteHTML)
-  doc.close()
-  iframe.contentWindow.focus()
-  iframe.contentWindow.print()
-  setTimeout(() => {
-    document.body.removeChild(iframe)
-  }, 1000)
 }
 
-const imprimirCadernoDoDia = () => {
-  if (transactions.value.length === 0) {
-    $q.notify({ type: 'warning', message: 'Não há lançamentos para imprimir nesta data.' })
-    return
-  }
-  const dataFormatadaParaPrint = new Date(dataSelecionada.value).toLocaleDateString('pt-BR', {
-    timeZone: 'UTC',
-  })
-  const corpoTabela = transactions.value
-    .filter((l) => !l.estornado)
-    .map((lancamento) => {
-      const itensHTML = lancamento.itens
-        .map((item) => `<li>${item.quantidade}x ${item.nome_produto_congelado}</li>`)
-        .join('')
-      return `
-        <tr>
-          <td>${lancamento.cliente_nome} ${lancamento.nome_funcionario_empresa ? '(' + lancamento.nome_funcionario_empresa + ')' : ''}</td>
-          <td><ul>${itensHTML}</ul></td>
-          <td>${lancamento.observacoes || ''}</td>
-          <td>${lancamento.status_preparo}</td>
-          <td>${lancamento.metodo_pagamento} ${lancamento.forma_pagamento ? '(' + lancamento.forma_pagamento + ')' : ''}</td>
-          <td>R$ ${lancamento.valor.toFixed(2)}</td>
-        </tr>
-      `
-    })
-    .join('')
-  const resumoHTML = `
-    <div class="resumo-print">
-      <p><strong>Total de Vendas:</strong> ${resumoDiario.value.totalVendas}</p>
-      <p><strong>Faturamento do Dia:</strong> R$ ${resumoDiario.value.faturamento.toFixed(2)}</p>
-    </div>
-  `
-  const relatorioHTML = `
+const generateOrderReceiptHTML = (order) => {
+  return `
+    <!DOCTYPE html>
     <html>
-      <head>
-        <title>Caderno do Dia - ${dataFormatadaParaPrint}</title>
-        <style>
-          body { font-family: sans-serif; } table { width: 100%; border-collapse: collapse; margin-top: 20px;}
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; } th { background-color: #f2f2f2; }
-          ul { margin: 0; padding-left: 15px; } .resumo-print { margin-top: 20px; text-align: right; font-size: 1.2em; }
-        </style>
-      </head>
-      <body>
-        <h1>Lançamentos do Dia: ${dataFormatadaParaPrint}</h1>
-        <table>
-          <thead> <tr> <th>Cliente (Funcionário)</th> <th>Itens</th> <th>Observações</th> <th>Preparo</th> <th>Pagamento</th> <th>Total</th> </tr> </thead>
-          <tbody> ${corpoTabela} </tbody>
-        </table>
-        ${resumoHTML}
-      </body>
+    <head>
+      <title>Pedido - ${order.cliente_nome}</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 20px; max-width: 300px; }
+        h1 { text-align: center; color: #db9000; font-size: 18px; }
+        .header { text-align: center; margin-bottom: 20px; }
+        .item { display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .total { border-top: 1px solid #000; padding-top: 10px; font-weight: bold; }
+        .footer { text-align: center; margin-top: 20px; font-size: 10px; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>${DADOS_RESTAURANTE.nome_fantasia}</h1>
+        <p>${DADOS_RESTAURANTE.endereco}</p>
+        <p>${DADOS_RESTAURANTE.telefone}</p>
+        <hr>
+      </div>
+      
+      <p><strong>Cliente:</strong> ${order.cliente_nome}</p>
+      ${order.nome_funcionario_empresa ? `<p><strong>Funcionário:</strong> ${order.nome_funcionario_empresa}</p>` : ''}
+      <p><strong>Data:</strong> ${new Date(order.created_at).toLocaleString('pt-BR')}</p>
+      <hr>
+      
+      ${order.itens.map(item => `
+        <div class="item">
+          <span>${item.quantidade}x ${item.nome}</span>
+          <span>R$ ${(item.preco_unitario_congelado * item.quantidade).toFixed(2)}</span>
+        </div>
+      `).join('')}
+      
+      <div class="total">
+        <div class="item">
+          <span>TOTAL</span>
+          <span>R$ ${order.valor.toFixed(2)}</span>
+        </div>
+      </div>
+      
+      ${order.observacoes ? `<p><strong>Obs:</strong> ${order.observacoes}</p>` : ''}
+      
+      <div class="footer">
+        <p>${DADOS_RESTAURANTE.cnpj}</p>
+        <p>*** NÃO É DOCUMENTO FISCAL ***</p>
+      </div>
+    </body>
     </html>
   `
-  const iframe = document.createElement('iframe')
-  iframe.style.position = 'absolute'
-  iframe.style.width = '0'
-  iframe.style.height = '0'
-  iframe.style.border = '0'
-  document.body.appendChild(iframe)
-  const doc = iframe.contentWindow.document
-  doc.open()
-  doc.write(relatorioHTML)
-  doc.close()
-  iframe.contentWindow.focus()
-  iframe.contentWindow.print()
-  setTimeout(() => {
-    document.body.removeChild(iframe)
-  }, 1000)
 }
 
-watch(dataSelecionada, (novaData) => {
-  resumoVisivel.value = false
-}, { immediate: true })
-
-onMounted(() => {
-  carregarDadosIniciais()
+// Lifecycle
+onMounted(async () => {
+  await dataStore.fetchClientes()
+  await dataStore.fetchProdutos()
 })
 </script>
 
 <style scoped>
-.estornado-style {
-  text-decoration: line-through;
-  opacity: 0.7;
+.caderno-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
-.opacity-80 {
-  opacity: 0.8;
+
+.page-header {
+  background: linear-gradient(135deg, var(--q-primary) 0%, #ffcc33 100%);
+  color: white;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.page-title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+}
+
+.header-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.date-input {
+  background: white;
+  border-radius: 4px;
+  min-width: 150px;
+}
+
+.print-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: white;
+  color: white;
+}
+
+.print-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.main-content {
+  flex: 1;
+  min-height: 0;
+}
+
+.left-panel,
+.right-panel {
+  height: 100%;
+  padding: 1rem;
+}
+
+.left-panel {
+  background: #f8f9fa;
+  border-right: 1px solid #e0e0e0;
+}
+
+.right-panel {
+  background: white;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .header-content {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: stretch;
+  }
+  
+  .header-actions {
+    justify-content: space-between;
+  }
+  
+  .page-title {
+    text-align: center;
+    font-size: 1.2rem;
+  }
+  
+  .left-panel,
+  .right-panel {
+    padding: 0.5rem;
+  }
 }
 </style>

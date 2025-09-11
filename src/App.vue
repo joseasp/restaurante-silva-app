@@ -53,9 +53,8 @@ import { onMounted } from 'vue'
 const dataStore = useDataStore()
 
 onMounted(() => {
-  // ESTA É A ÚNICA LINHA QUE REALMENTE MUDAMOS:
-  // Trocamos 'initialize' pela nova função de tempo real.
-  dataStore.initSupabaseSubscription()
+  // Initialize the data store
+  dataStore.initialize()
 })
 
 const recarregarPagina = () => {
@@ -66,9 +65,8 @@ const recarregarPagina = () => {
 // ter um botão manual pode ser útil para forçar uma checagem.
 const forcarSync = () => {
   console.log('Sincronização manual acionada!')
-  // A função syncData() foi removida do novo dataStore,
-  // mas podemos chamar a syncAllTables() para um efeito parecido.
-  dataStore.syncAllTables()
+  // Force a manual sync by calling initialize
+  dataStore.initialize()
 }
 </script>
 
