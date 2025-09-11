@@ -1,6 +1,6 @@
 // Crie este novo arquivo: src/composables/useTransactions.js
 
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref } from 'vue'
 import { supabase } from '../services/supabaseClient'
 
 export function useTransactions() {

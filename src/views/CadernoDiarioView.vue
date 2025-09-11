@@ -438,8 +438,9 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useDataStore } from '@/stores/dataStore.js'
-import { db } from '@/services/databaseService.js';
+import { db } from '@/services/databaseService.js'
 import { DADOS_RESTAURANTE } from '@/config.js'
+import { getTodayISO, formatDateForDisplay } from '@/utils/day.js'
 import PinModal from '@/components/PinModal.vue'
 
 const $q = useQuasar()
@@ -468,9 +469,7 @@ const pedidosOrdenados = computed(() => {
     })
 })
 
-const hoje = new Date()
-hoje.setMinutes(hoje.getMinutes() - hoje.getTimezoneOffset())
-const dataSelecionada = ref(hoje.toISOString().slice(0, 10))
+const dataSelecionada = ref(getTodayISO())
 const buscaCliente = ref('')
 const buscaProduto = ref('')
 const lancamentoEmEdicao = ref(null)
@@ -595,6 +594,8 @@ const totalPedido = computed(() => {
 })
 
 const carregarDadosIniciais = async () => {
+  // Set the selected day for realtime filtering
+  dataStore.setSelectedDay(dataSelecionada.value)
   await dataStore.fetchClientes()
   await dataStore.fetchProdutos()
   await dataStore.fetchTransacoesDoDia(dataSelecionada.value)
@@ -894,6 +895,8 @@ const imprimirCadernoDoDia = () => {
 }
 
 watch(dataSelecionada, (novaData) => {
+  // Update the selected day for realtime filtering
+  dataStore.setSelectedDay(novaData)
   dataStore.fetchTransacoesDoDia(novaData)
   resumoVisivel.value = false
 })
