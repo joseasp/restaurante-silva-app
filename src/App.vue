@@ -1,5 +1,3 @@
-// src/App.vue
-
 <template>
   <q-layout view="hHh lpR fFf">
     <q-header elevated class="bg-primary text-white" height-hint="60">
@@ -8,23 +6,28 @@
         <img
           src="/logo-restaurante-completo.png"
           class="logo-restaurante"
-          @click="recarregarPagina"
+          @click="$router.push('/caderno')"
           style="cursor: pointer"
         />
 
         <q-space />
 
-        <q-tabs align="left">
-          <q-route-tab to="/caderno" icon="book" label="Caderno" />
-          <q-route-tab to="/produtos" icon="inventory_2" label="Produtos" />
-          <q-route-tab to="/clientes" icon="people" label="Clientes" />
-          <q-route-tab to="/contas-a-receber" icon="account_balance_wallet" label="Contas a Receber" />
-          <q-route-tab to="/relatorios" icon="assessment" label="Relatórios" />
+        <q-tabs align="right">
+          <q-route-tab to="/caderno" label="Caderno" />
+          <q-route-tab to="/produtos" label="Produtos" />
+          <q-route-tab to="/clientes" label="Clientes" />
+          <q-route-tab to="/contas-receber" label="Contas a Receber" />
+          <q-route-tab to="/relatorios" label="Relatórios" />
         </q-tabs>
-
-        <!-- BOTÃO DE SYNC MANTIDO (pode ser útil para debug) -->
-        <q-btn flat round dense icon="sync" @click="forcarSync" class="q-ml-md">
-          <q-tooltip>Forçar Sincronização Manual</q-tooltip>
+        <q-btn
+          flat
+          dense
+          icon="refresh"
+          :loading="atualizando"
+          @click="atualizarAgora"
+          class="q-ml-md"
+        >
+          <q-tooltip>Atualizar agora</q-tooltip>
         </q-btn>
       </q-toolbar>
     </q-header>
@@ -35,11 +38,7 @@
 
     <!-- Logotipo do Desenvolvedor (sutil, no canto) -->
     <div class="logo-dev-container">
-      <a
-        href="https://www.instagram.com/dudu_apolinario/"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
+      <a href="https://seusite.com.br" target="_blank" rel="noopener noreferrer">
         <img src="/logo-dev.png" alt="Desenvolvido por Apolinário Contabilidade" />
       </a>
     </div>
@@ -47,29 +46,36 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import { useDataStore } from '@/stores/dataStore.js'
+import { useQuasar } from 'quasar'
 import { onMounted } from 'vue'
 
 const dataStore = useDataStore()
+const $q = useQuasar()
+const atualizando = ref(false)
+
+async function atualizarAgora() {
+  if (atualizando.value) return
+  atualizando.value = true
+  try {
+    await Promise.all([
+      dataStore.fetchClientes(),
+      dataStore.fetchProdutos(),
+      dataStore.fetchTransacoesDoDia && dataStore.fetchTransacoesDoDia(new Date().toISOString().slice(0, 10))
+    ])
+    $q.notify({ type: 'positive', message: 'Atualizado' })
+  } catch (e) {
+    console.error(e)
+    $q.notify({ type: 'negative', message: 'Falha ao atualizar' })
+  } finally {
+    atualizando.value = false
+  }
+}
 
 onMounted(() => {
-  // ESTA É A ÚNICA LINHA QUE REALMENTE MUDAMOS:
-  // Trocamos 'initialize' pela nova função de tempo real.
-  dataStore.initSupabaseSubscription()
+  dataStore.initialize()
 })
-
-const recarregarPagina = () => {
-  window.location.href = '/caderno'
-}
-
-// Mantivemos esta função. Embora a sincronização agora seja automática,
-// ter um botão manual pode ser útil para forçar uma checagem.
-const forcarSync = () => {
-  console.log('Sincronização manual acionada!')
-  // A função syncData() foi removida do novo dataStore,
-  // mas podemos chamar a syncAllTables() para um efeito parecido.
-  dataStore.syncAllTables()
-}
 </script>
 
 <style>
