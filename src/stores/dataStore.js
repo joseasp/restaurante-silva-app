@@ -1,15 +1,34 @@
+  // Remove campos locais/UI antes de enviar para o Supabase
+  function sanitizeForRemote(obj) {
+    const {
+      ultima_sincronizacao,
+      mostrarSeletorFP,
+      cliente_nome,
+      // adicione aqui quaisquer campos só de UI se existirem
+      ...rest
+    } = obj || {}
+    return rest
+  }
 // src/stores/dataStore.js
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue' // Adiciona 'computed'
 import { db } from '@/services/databaseService.js'
 import { supabase } from '@/services/supabaseClient.js';
 import { v4 as uuidv4 } from 'uuid';
+import { startRealtime } from '@/services/realtime'
+import { startIncrementalPull } from '@/services/pullIncremental'
+import { dayKey, isSameDay } from '@/utils/day'
 
 export const useDataStore = defineStore('data', () => {
   // --- ESTADO (STATE) ---
   const todosOsClientes = ref([]) // Armazena TODOS os clientes (ativos e inativos)
   const produtos = ref([])
   const transacoes = ref([])
+  const currentDateISO = ref(null)
+
+  function setCurrentDateISO(dateISO) {
+    currentDateISO.value = dateISO
+  }
 
   // --- GETTERS (COMPUTED) ---
   // Propriedade computada que deriva a lista de ativos da lista principal
@@ -41,8 +60,12 @@ export const useDataStore = defineStore('data', () => {
 
   async function fetchTransacoesDoDia(dataISO) {
     try {
+      const reqDate = dataISO || currentDateISO.value
+      if (!currentDateISO.value) currentDateISO.value = reqDate
+      const requestKey = dayKey(reqDate)
+
       const transacoesDoDB = await db.transacoes
-        .where({ data_transacao: dataISO, tipo_transacao: 'VENDA' })
+        .where({ data_transacao: requestKey, tipo_transacao: 'VENDA' })
         .toArray()
 
       // Usa a lista completa de clientes para encontrar o nome, mesmo que inativo
@@ -71,6 +94,8 @@ export const useDataStore = defineStore('data', () => {
         return (a.id || 0) - (b.id || 0)
       })
 
+      // Proteção: só aplica se for o dia selecionado
+      if (!isSameDay(currentDateISO.value, requestKey)) return
       transacoes.value = lancamentosCompletos
     } catch (error) {
       console.error('Erro ao buscar transações do dia:', error)
@@ -78,75 +103,127 @@ export const useDataStore = defineStore('data', () => {
     }
   }
 
+  function ensureTimestamps(row, { setCreated = false } = {}) {
+    const now = new Date().toISOString()
+    const out = { ...row }
+    if (setCreated && !out.created_at) out.created_at = now
+    out.updated_at = now
+    return out
+  }
+
   async function lancarPedido(transacao, itens) {
     const transacaoId = uuidv4();
-    await db.transacoes.add({ ...transacao, id: transacaoId });
+    const now = new Date().toISOString();
+    const payloadTransacao = { ...transacao, id: transacaoId, created_at: now, updated_at: now }
+
+    // Salva local
+    await db.transacoes.add({ ...payloadTransacao, ultima_sincronizacao: null });
     const itensParaSalvar = itens.map((item) => {
       const { id, ...itemSemId } = item
-      return { ...itemSemId, id: uuidv4(), transacao_id: transacaoId }
+      return { ...itemSemId, id: uuidv4(), transacao_id: transacaoId, created_at: now, updated_at: now, ultima_sincronizacao: null }
     })
     await db.itens_transacao.bulkAdd(itensParaSalvar)
     await fetchTransacoesDoDia(transacao.data_transacao)
+
+    // Tenta subir na hora (se online). Se falhar, o sync periódico resolve.
+    if (navigator.onLine) {
+      try {
+        const payloadTransacaoRemote = sanitizeForRemote(payloadTransacao)
+        const payloadItensRemote = itensParaSalvar.map(sanitizeForRemote)
+        await supabase.from('transacoes').upsert([payloadTransacaoRemote])
+        if (payloadItensRemote.length) {
+          await supabase.from('itens_transacao').upsert(payloadItensRemote)
+        }
+        // Marca como sincronizado após sucesso
+        await db.transacoes.update(transacaoId, { ultima_sincronizacao: new Date() })
+        if (itensParaSalvar.length) {
+          await db.itens_transacao.bulkUpdate(itensParaSalvar.map((i) => ({ key: i.id, changes: { ultima_sincronizacao: new Date() } })))
+        }
+      } catch (error) {
+        console.warn('Upload imediato falhou', { code: error?.code, message: error?.message, details: error?.details })
+      }
+    }
   }
 
   async function estornarLancamento(lancamento) {
-    await db.transacoes.update(lancamento.id, { estornado: true })
+    const now = new Date().toISOString();
+    await db.transacoes.update(lancamento.id, { estornado: true, updated_at: now, ultima_sincronizacao: null })
     await fetchTransacoesDoDia(lancamento.data_transacao)
+    if (navigator.onLine) {
+      try {
+        await supabase.from('transacoes').update({ estornado: true, updated_at: now }).eq('id', lancamento.id)
+        await db.transacoes.update(lancamento.id, { ultima_sincronizacao: new Date() })
+      } catch (e) {
+        console.debug('Falha no upload imediato do estorno', e?.message || e)
+      }
+    }
   }
 
   async function atualizarStatus(lancamento, updates) {
-    await db.transacoes.update(lancamento.id, updates)
+    const now = new Date().toISOString();
+    await db.transacoes.update(lancamento.id, { ...updates, updated_at: now, ultima_sincronizacao: null })
     await fetchTransacoesDoDia(lancamento.data_transacao)
+    if (navigator.onLine) {
+      try {
+        await supabase.from('transacoes').update({ ...updates, updated_at: now }).eq('id', lancamento.id)
+        await db.transacoes.update(lancamento.id, { ultima_sincronizacao: new Date() })
+      } catch (e) {
+        console.debug('Falha no upload imediato do status', e?.message || e)
+      }
+    }
   }
 
+  let isSyncRunning = false
   async function syncData() {
-  return  // PAUSADO TEMPORARIAMENTE
-  // console.log("Iniciando rotina de sincronização...");
+    if (!navigator.onLine || isSyncRunning) return
+    isSyncRunning = true
     try {
-      // Sincroniza em ordem de dependência
-      
-      // 1. Clientes
-      const clientesParaSync = await db.clientes.filter(c => !c.ultima_sincronizacao).toArray();
-      if (clientesParaSync.length > 0) {
-        const { error } = await supabase.from('clientes').upsert(clientesParaSync.map(({ ultima_sincronizacao, ...rest }) => rest));
-        if (error) throw error;
-        await db.clientes.bulkUpdate(clientesParaSync.map(c => ({ key: c.id, changes: { ultima_sincronizacao: new Date() } })));
-        console.log(`${clientesParaSync.length} clientes sincronizados.`);
+      const needsSend = (row) => {
+        const u = row.updated_at ? new Date(row.updated_at).getTime() : 0
+        const s = row.ultima_sincronizacao ? new Date(row.ultima_sincronizacao).getTime() : 0
+        return s === 0 || u > s
       }
 
-      // 2. Produtos
-      const produtosParaSync = await db.produtos.filter(p => !p.ultima_sincronizacao).toArray();
-      if (produtosParaSync.length > 0) {
-        const { error } = await supabase.from('produtos').upsert(produtosParaSync.map(({ ultima_sincronizacao, ...rest }) => rest));
-        if (error) throw error;
-        await db.produtos.bulkUpdate(produtosParaSync.map(p => ({ key: p.id, changes: { ultima_sincronizacao: new Date() } })));
-        console.log(`${produtosParaSync.length} produtos sincronizados.`);
+      const clientesParaSync = await db.clientes.filter(needsSend).toArray()
+      if (clientesParaSync.length) {
+        const payload = clientesParaSync.map(({ ultima_sincronizacao, ...rest }) => ensureTimestamps(rest, { setCreated: true }))
+        const { error } = await supabase.from('clientes').upsert(payload)
+        if (!error) await db.clientes.bulkUpdate(clientesParaSync.map((c) => ({ key: c.id, changes: { ultima_sincronizacao: new Date() } })))
       }
 
-      // 3. Transações
-      const transacoesParaSync = await db.transacoes.filter(t => !t.ultima_sincronizacao).toArray();
-      if (transacoesParaSync.length > 0) {
-        // Renomeia cliente_id para o campo correto no Supabase se for diferente, ou garante que ele exista
-        const payload = transacoesParaSync.map(({ ultima_sincronizacao, ...rest }) => rest);
-        const { error } = await supabase.from('transacoes').upsert(payload);
-        if (error) throw error;
-        await db.transacoes.bulkUpdate(transacoesParaSync.map(t => ({ key: t.id, changes: { ultima_sincronizacao: new Date() } })));
-        console.log(`${transacoesParaSync.length} transações sincronizadas.`);
+      const produtosParaSync = await db.produtos.filter(needsSend).toArray()
+      if (produtosParaSync.length) {
+        const payload = produtosParaSync.map(({ ultima_sincronizacao, ...rest }) => ensureTimestamps(rest, { setCreated: true }))
+        const { error } = await supabase.from('produtos').upsert(payload)
+        if (!error) await db.produtos.bulkUpdate(produtosParaSync.map((p) => ({ key: p.id, changes: { ultima_sincronizacao: new Date() } })))
       }
 
-      // 4. Itens de Transação
-      const itensParaSync = await db.itens_transacao.filter(i => !i.ultima_sincronizacao).toArray();
-      if (itensParaSync.length > 0) {
-        const payload = itensParaSync.map(({ ultima_sincronizacao, ...rest }) => rest);
-        const { error } = await supabase.from('itens_transacao').upsert(payload);
-        if (error) throw error;
-        await db.itens_transacao.bulkUpdate(itensParaSync.map(i => ({ key: i.id, changes: { ultima_sincronizacao: new Date() } })));
-        console.log(`${itensParaSync.length} itens de transação sincronizados.`);
+      if (db.funcionarios) {
+        const funcionariosParaSync = await db.funcionarios.filter(needsSend).toArray()
+        if (funcionariosParaSync.length) {
+          const payload = funcionariosParaSync.map(({ ultima_sincronizacao, ...rest }) => ensureTimestamps(rest, { setCreated: true }))
+          const { error } = await supabase.from('funcionarios').upsert(payload)
+          if (!error) await db.funcionarios.bulkUpdate(funcionariosParaSync.map((f) => ({ key: f.id, changes: { ultima_sincronizacao: new Date() } })))
+        }
       }
 
-      console.log("Sincronização concluída.");
-    } catch (error) {
-      console.error("ERRO DURANTE A SINCRONIZAÇÃO:", error);
+      const transacoesParaSync = await db.transacoes.filter(needsSend).toArray()
+      if (transacoesParaSync.length) {
+        const payload = transacoesParaSync.map(({ ultima_sincronizacao, ...rest }) => ensureTimestamps(rest, { setCreated: true }))
+        const { error } = await supabase.from('transacoes').upsert(payload)
+        if (!error) await db.transacoes.bulkUpdate(transacoesParaSync.map((t) => ({ key: t.id, changes: { ultima_sincronizacao: new Date() } })))
+      }
+
+      const itensParaSync = await db.itens_transacao.filter(needsSend).toArray()
+      if (itensParaSync.length) {
+        const payload = itensParaSync.map(({ ultima_sincronizacao, ...rest }) => ensureTimestamps(rest, { setCreated: true }))
+        const { error } = await supabase.from('itens_transacao').upsert(payload)
+        if (!error) await db.itens_transacao.bulkUpdate(itensParaSync.map((i) => ({ key: i.id, changes: { ultima_sincronizacao: new Date() } })))
+      }
+    } catch (e) {
+      console.debug('Sync falhou temporariamente, tentará depois...', e?.message || e)
+    } finally {
+      isSyncRunning = false
     }
   }
 
@@ -198,36 +275,46 @@ export const useDataStore = defineStore('data', () => {
 }
 
   async function initialize() {
-  console.log("Inicializando o Data Store...");
-  
-  const contagemClientes = await db.clientes.count();
-  
-  // Lógica crucial:
-  // 1. Verifica se o banco local está vazio.
-  if (contagemClientes === 0) {
-    console.log("Banco local vazio detectado.");
+    console.log("Inicializando o Data Store...");
     
-    // 2. Tenta restaurar da nuvem.
-    const restauradoComSucesso = await restaurarBackupDaNuvem();
+    const contagemClientes = await db.clientes.count();
     
-    // 3. SOMENTE se a restauração falhar (ex: primeiro uso, sem internet),
-    //    cria os dados padrão.
-    if (!restauradoComSucesso) {
-      console.log("Restauração falhou ou não havia dados. Criando padrões.");
-      await criarClienteAvulsoPadrao();
+    // Lógica crucial:
+    // 1. Verifica se o banco local está vazio.
+    if (contagemClientes === 0) {
+      console.log("Banco local vazio detectado.");
+      
+      // 2. Tenta restaurar da nuvem.
+      const restauradoComSucesso = await restaurarBackupDaNuvem();
+      
+      // 3. SOMENTE se a restauração falhar (ex: primeiro uso, sem internet),
+      //    cria os dados padrão.
+      if (!restauradoComSucesso) {
+        console.log("Restauração falhou ou não havia dados. Criando padrões.");
+        await criarClienteAvulsoPadrao();
+      }
     }
+
+    // 4. Após garantir que os dados locais existem (seja por restauração ou criação),
+    //    carrega-os para a memória da aplicação.
+
+    await fetchClientes();
+    await fetchProdutos();
+
+    // LIGA O REALTIME
+    startRealtime();
+
+    // 5. Inicia a rotina de sincronização de UPLOAD.
+    console.log("Iniciando a primeira sincronização de upload.");
+    await syncData();
+    setInterval(syncData, 120000); // E a cada 2 minutos
+
+    // Listener para reconexão
+    window.addEventListener('online', () => { setTimeout(syncData, 1000); });
+
+    // Refresh incremental inteligente
+    startIncrementalPull(30000);
   }
-
-  // 4. Após garantir que os dados locais existem (seja por restauração ou criação),
-  //    carrega-os para a memória da aplicação.
-  await fetchClientes();
-  await fetchProdutos();
-
-  // 5. Inicia a rotina de sincronização de UPLOAD.
-  console.log("Iniciando a primeira sincronização de upload.");
-  await syncData();
-  setInterval(syncData, 120000); // E a cada 2 minutos
-}
 
   // --- RETORNO ---
   return {
@@ -239,6 +326,7 @@ export const useDataStore = defineStore('data', () => {
     produtosAtivos,
     // Outros estados
     transacoes,
+    currentDateISO,
     // Ações
     fetchClientes,
     fetchProdutos,
@@ -249,5 +337,6 @@ export const useDataStore = defineStore('data', () => {
     atualizarStatus,
     syncData,
     restaurarBackupDaNuvem,
+    setCurrentDateISO,
   }
 })

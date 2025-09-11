@@ -894,11 +894,13 @@ const imprimirCadernoDoDia = () => {
 }
 
 watch(dataSelecionada, (novaData) => {
+  dataStore.setCurrentDateISO(novaData)
   dataStore.fetchTransacoesDoDia(novaData)
   resumoVisivel.value = false
 })
 
 onMounted(() => {
+  dataStore.setCurrentDateISO(dataSelecionada.value)
   carregarDadosIniciais()
 })
 </script>
