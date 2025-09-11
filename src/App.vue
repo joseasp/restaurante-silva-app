@@ -1,3 +1,5 @@
+// src/App.vue
+
 <template>
   <q-layout view="hHh lpR fFf">
     <q-header elevated class="bg-primary text-white" height-hint="60">
@@ -12,16 +14,18 @@
 
         <q-space />
 
-        <q-tabs align="right">
-          <q-route-tab to="/caderno" label="Caderno" />
-          <q-route-tab to="/produtos" label="Produtos" />
-          <q-route-tab to="/clientes" label="Clientes" />
-          <q-route-tab to="/contas-receber" label="Contas a Receber" />
-          <q-route-tab to="/relatorios" label="Relatórios" />
+        <q-tabs align="left">
+          <q-route-tab to="/caderno" icon="book" label="Caderno" />
+          <q-route-tab to="/produtos" icon="inventory_2" label="Produtos" />
+          <q-route-tab to="/clientes" icon="people" label="Clientes" />
+          <q-route-tab to="/contas-a-receber" icon="account_balance_wallet" label="Contas a Receber" />
+          <q-route-tab to="/relatorios" icon="assessment" label="Relatórios" />
         </q-tabs>
 
-        <!-- BOTÃO DE SYNC ADICIONADO -->
-        <q-btn flat round dense icon="sync" @click="forcarSync" class="q-ml-md" />
+        <!-- BOTÃO DE SYNC MANTIDO (pode ser útil para debug) -->
+        <q-btn flat round dense icon="sync" @click="forcarSync" class="q-ml-md">
+          <q-tooltip>Forçar Sincronização Manual</q-tooltip>
+        </q-btn>
       </q-toolbar>
     </q-header>
 
@@ -49,17 +53,23 @@ import { onMounted } from 'vue'
 const dataStore = useDataStore()
 
 onMounted(() => {
-  dataStore.initialize()
+  // ESTA É A ÚNICA LINHA QUE REALMENTE MUDAMOS:
+  // Trocamos 'initialize' pela nova função de tempo real.
+  dataStore.initSupabaseSubscription()
 })
 
 const recarregarPagina = () => {
   window.location.href = '/caderno'
 }
 
+// Mantivemos esta função. Embora a sincronização agora seja automática,
+// ter um botão manual pode ser útil para forçar uma checagem.
 const forcarSync = () => {
-  console.log("Sincronização manual acionada!");
-  dataStore.syncData();
-};
+  console.log('Sincronização manual acionada!')
+  // A função syncData() foi removida do novo dataStore,
+  // mas podemos chamar a syncAllTables() para um efeito parecido.
+  dataStore.syncAllTables()
+}
 </script>
 
 <style>

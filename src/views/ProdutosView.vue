@@ -1,270 +1,224 @@
+<!-- src/views/ProdutosView.vue -->
+
 <template>
   <q-page padding>
-    <h1 class="text-h4 text-center q-mb-md">Gestão de Produtos</h1>
+    <q-banner v-if="!online" class="bg-red text-white q-mb-md">
+      Você está offline. Alguns dados podem não estar atualizados.
+    </q-banner>
+    <q-banner v-if="erroCarregamento" class="bg-red text-white q-mb-md">
+      {{ erroCarregamento }}
+    </q-banner>
+    <q-inner-loading :showing="loading">
+      <q-spinner size="50px" color="primary" />
+      <div>Carregando dados...</div>
+    </q-inner-loading>
+    <div class="text-h4 q-mb-md">Gestão de Produtos</div>
 
-    <!-- FORMULÁRIO DE PRODUTO -->
-    <q-card flat bordered class="q-pa-md q-mb-lg">
-      <q-form @submit.prevent="salvarProduto">
-        <div class="row q-col-gutter-md">
-          <div class="col-12 col-md-8">
-            <q-input
+    <!-- Seção para adicionar/editar produtos -->
+    <q-card class="q-mb-lg">
+      <q-card-section>
+        <div class="text-h6">
+          {{ produtoEmEdicao ? 'Editando Produto' : 'Adicionar Novo Produto' }}
+        </div>
+      </q-card-section>
+
+      <q-card-section class="q-pt-none">
+        <q-form
+          ref="formRef"
+          @submit="produtoEmEdicao ? salvarEdicao() : salvarNovoProduto()"
+          class="row q-col-gutter-md items-end"
+        >
+          <div class="col-xs-12 col-sm-6">
+            <q-select
               outlined
-              v-model="formProduto.nome"
-              label="Nome do Produto"
-              :rules="[(val) => !!val || 'O nome é obrigatório']"
-              lazy-rules
+              v-model="form.funcionario"
+              :options="opcoesFuncionarios"
+              use-input
+              fill-input
+              hide-selected
+              input-debounce="0"
+              label="Nome do Funcionário"
+              new-value-mode="add"
+              @new-value="onNewFuncionario"
+              clearable
+              dense
+              :rules="[]"
             />
           </div>
-          <div class="col-12 col-md-4">
+          <div class="col-xs-12 col-sm-6">
             <q-input
               outlined
-              v-model.number="formProduto.preco"
+              v-model="form.nome"
+              label="Nome do Produto"
+              :rules="[(val) => !!val || 'Campo obrigatório']"
+            />
+          </div>
+          <div class="col-xs-12 col-sm-4">
+            <q-input
+              outlined
               type="number"
               step="0.01"
-              label="Preço"
-              prefix="R$"
-              :rules="[(val) => val !== null && val > 0, 'O preço deve ser maior que zero']"
-              lazy-rules
+              v-model.number="form.preco"
+              label="Preço (R$)"
+              :rules="[(val) => val > 0 || 'Preço deve ser maior que zero']"
             />
           </div>
-        </div>
-        <div class="q-mt-md q-gutter-sm">
-          <q-btn
-            color="primary"
-            :label="produtoEmEdicao ? 'Salvar Alterações' : 'Adicionar Produto'"
-            type="submit"
-          />
-          <q-btn
-            flat
-            color="grey"
-            label="Cancelar"
-            v-if="produtoEmEdicao"
-            @click="cancelarEdicao"
-          />
-        </div>
-      </q-form>
+          <div class="col-xs-12 col-sm-2">
+            <q-btn
+              v-if="!produtoEmEdicao"
+              type="submit"
+              label="Adicionar"
+              color="primary"
+              class="full-width"
+              size="lg"
+              unelevated
+            />
+            <div v-else class="row q-gutter-sm">
+              <q-btn label="Salvar" type="submit" color="positive" class="col" unelevated />
+              <q-btn label="Cancelar" @click="cancelarEdicao" color="grey" class="col" flat />
+            </div>
+          </div>
+        </q-form>
+      </q-card-section>
     </q-card>
 
-    <!-- LISTA DE PRODUTOS -->
-    <q-card flat bordered>
-      <q-list bordered separator>
-        <q-item>
-          <q-item-section>
-            <q-toggle v-model="mostrarInativos" label="Mostrar produtos inativos" />
-          </q-item-section>
+    <!-- Seção da lista de produtos -->
+    <q-card>
+      <q-card-section class="flex justify-between items-center">
+        <div class="text-h6">Lista de Produtos</div>
+        <q-input outlined dense v-model="busca" placeholder="Buscar..." class="q-ml-md">
+          <template v-slot:append>
+            <q-icon name="search" />
+          </template>
+        </q-input>
+      </q-card-section>
+
+      <q-separator />
+
+      <q-list separator>
+        <q-item v-if="produtosFiltrados.length === 0">
+          <q-item-section class="text-center text-grey">Nenhum produto encontrado.</q-item-section>
         </q-item>
 
-        <q-item v-if="produtos.length === 0">
-          <q-item-section class="text-grey-8"> Nenhum produto encontrado. </q-item-section>
-        </q-item>
-
-        <q-item
-          v-for="produto in produtos"
-          :key="produto.id"
-          :class="{ 'bg-grey-2': !produto.ativo }"
-          clickable
-          v-ripple
-        >
+        <q-item v-for="produto in produtosFiltrados" :key="produto.id">
           <q-item-section>
             <q-item-label>{{ produto.nome }}</q-item-label>
-            <q-item-label caption>
-              {{
-                produto.preco
-                  ? produto.preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-                  : 'R$ 0,00'
-              }}
-            </q-item-label>
+            <q-item-label caption>R$ {{ produto.preco.toFixed(2) }}</q-item-label>
           </q-item-section>
-
           <q-item-section side>
-            <div class="row items-center">
-              <q-btn flat round dense icon="edit" color="info" @click.stop="iniciarEdicao(produto)">
-                <q-tooltip>Editar</q-tooltip>
-              </q-btn>
+            <div class="row q-gutter-sm">
+              <q-btn round flat icon="edit" color="info" @click="iniciarEdicao(produto)" />
               <q-btn
-                v-if="produto.ativo"
-                flat
                 round
-                dense
-                color="negative"
+                flat
                 icon="delete"
-                @click.stop="desativarProduto(produto)"
-              >
-                <q-tooltip>Desativar</q-tooltip>
-              </q-btn>
-              <q-btn
-                v-else
-                flat
-                round
-                dense
-                color="positive"
-                icon="undo"
-                @click.stop="reativarProduto(produto)"
-              >
-                <q-tooltip>Reativar</q-tooltip>
-              </q-btn>
+                color="negative"
+                @click="confirmarExclusao(produto)"
+              />
             </div>
           </q-item-section>
         </q-item>
       </q-list>
     </q-card>
-
-    <!-- Modal de PIN -->
-    <PinModal
-      :visible="mostrarPinModal"
-      @close="mostrarPinModal = false"
-      @success="executarAcaoPendente"
-    />
   </q-page>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
-import { useDataStore } from '@/stores/dataStore.js'
-import { db } from '@/services/databaseService.js' // Importando o db
-import PinModal from '@/components/PinModal.vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { useDataStore } from '@/stores/dataStore'
+import { storeToRefs } from 'pinia'
 import { useQuasar } from 'quasar'
-import { v4 as uuidv4 } from 'uuid';
 
-const $q = useQuasar()
 const dataStore = useDataStore()
-
-const getInitialForm = () => ({ nome: '', preco: null })
-const formProduto = ref(getInitialForm())
-const produtoEmEdicao = ref(null)
-const produtos = ref([])
-const mostrarInativos = ref(false)
-
-// Refs para o Modal de PIN
-const mostrarPinModal = ref(false)
-const acaoPendente = ref(null)
-
-// *** FUNÇÃO ATUALIZADA PARA ORDENAR ALFABETICAMENTE ***
-const carregarProdutos = () => {
-  if (!dataStore.produtos) {
-    produtos.value = []
-    return
-  }
-
-  let produtosFiltrados = []
-  if (mostrarInativos.value) {
-    // Pega todos os produtos
-    produtosFiltrados = [...dataStore.produtos]
-  } else {
-    // Pega apenas os produtos ativos
-    produtosFiltrados = dataStore.produtos.filter((p) => p.ativo === true)
-  }
-
-  // Ordena a lista filtrada (seja ela qual for) por nome
-  produtos.value = produtosFiltrados.sort((a, b) => a.nome.localeCompare(b.nome))
-}
-
-watch(() => dataStore.produtos, carregarProdutos, { deep: true, immediate: true })
-watch(mostrarInativos, carregarProdutos)
+const $q = useQuasar()
+const { loading, erroCarregamento, online } = storeToRefs(dataStore)
 
 onMounted(() => {
-  dataStore.fetchProdutos()
+  window.addEventListener('online', () => (dataStore.online = true))
+  window.addEventListener('offline', () => (dataStore.online = false))
+})
+onUnmounted(() => {
+  window.removeEventListener('online', () => (dataStore.online = true))
+  window.removeEventListener('offline', () => (dataStore.online = false))
 })
 
-const iniciarEdicao = (produto) => {
-  produtoEmEdicao.value = produto
-  formProduto.value = { ...produto }
-  window.scrollTo({ top: 0, behavior: 'smooth' })
+const formRef = ref(null)
+const produtos = computed(() => dataStore.produtosAtivos)
+
+// Lista de funcionários cadastrados (apenas sugestões, texto livre)
+const opcoesFuncionarios = ref([
+  'Ana',
+  'Carlos',
+  'João'
+])
+
+const getInitialForm = () => ({ funcionario: '', nome: '', preco: null })
+
+const form = ref(getInitialForm())
+// Aceita qualquer valor digitado no campo funcionário
+function onNewFuncionario(val, done) {
+  // Aceita qualquer valor digitado
+  done(val)
+}
+const produtoEmEdicao = ref(null)
+const busca = ref('')
+
+const produtosFiltrados = computed(() => {
+  if (!busca.value) {
+    return produtos.value
+  }
+  return produtos.value.filter((p) => p.nome.toLowerCase().includes(busca.value.toLowerCase()))
+})
+
+function iniciarEdicao(produto) {
+  window.scrollTo(0, 0)
+  produtoEmEdicao.value = { ...produto }
+  form.value = { ...produto }
 }
 
-const cancelarEdicao = () => {
+function cancelarEdicao() {
   produtoEmEdicao.value = null
-  formProduto.value = getInitialForm()
+  form.value = getInitialForm()
+  nextTick(() => {
+    if (formRef.value) {
+      formRef.value.resetValidation()
+    }
+  })
 }
 
-const salvarProduto = async () => {
-  if (produtoEmEdicao.value) {
-    try {
-      await db.produtos.update(produtoEmEdicao.value.id, {
-        nome: formProduto.value.nome,
-        preco: parseFloat(formProduto.value.preco),
-      })
-      await dataStore.fetchProdutos()
-      $q.notify({
-        color: 'positive',
-        message: 'Produto atualizado com sucesso!',
-        icon: 'check_circle',
-      })
-      cancelarEdicao()
-    } catch (error) {
-      console.error('Erro ao atualizar produto:', error)
-      $q.notify({
-        color: 'negative',
-        message: 'Erro ao atualizar produto.',
-        icon: 'report_problem',
-      })
-    }
-  } else {
-    try {
-      await db.produtos.add({
-        id: uuidv4(),
-        nome: formProduto.value.nome,
-        preco: parseFloat(formProduto.value.preco),
-        ativo: true,
-      })
-      await dataStore.fetchProdutos()
-      $q.notify({
-        color: 'positive',
-        message: 'Produto adicionado com sucesso!',
-        icon: 'check_circle',
-      })
-      formProduto.value = getInitialForm()
-    } catch (error) {
-      console.error('Erro ao adicionar produto:', error)
-      $q.notify({
-        color: 'negative',
-        message: 'Erro ao adicionar produto.',
-        icon: 'report_problem',
-      })
-    }
-  }
-}
-
-const desativarProduto = (produto) => {
-  acaoPendente.value = async () => {
-    try {
-      await db.produtos.update(produto.id, { ativo: false })
-      await dataStore.fetchProdutos()
-      $q.notify({
-        color: 'positive',
-        message: 'Produto desativado com sucesso.',
-        icon: 'toggle_off',
-      })
-    } catch (error) {
-      console.error('Erro ao desativar produto:', error)
-    }
-  }
-  mostrarPinModal.value = true
-}
-
-const reativarProduto = async (produto) => {
+async function salvarNovoProduto() {
   try {
-    await db.produtos.update(produto.id, { ativo: true })
-    await dataStore.fetchProdutos()
-    $q.notify({
-      color: 'positive',
-      message: 'Produto reativado com sucesso.',
-      icon: 'toggle_on',
-    })
+    await dataStore.adicionarProduto(form.value)
+    $q.notify({ type: 'positive', message: 'Produto adicionado com sucesso!' })
+    cancelarEdicao()
   } catch (error) {
-    console.error('Erro ao reativar produto:', error)
+    $q.notify({ type: 'negative', message: error.message })
   }
 }
 
-const executarAcaoPendente = () => {
-  if (acaoPendente.value) {
-    acaoPendente.value()
+async function salvarEdicao() {
+  try {
+    await dataStore.atualizarProduto(form.value)
+    $q.notify({ type: 'positive', message: 'Produto atualizado com sucesso!' })
+    cancelarEdicao()
+  } catch (error) {
+    $q.notify({ type: 'negative', message: error.message })
   }
-  mostrarPinModal.value = false
-  acaoPendente.value = null
+}
+
+function confirmarExclusao(produto) {
+  $q.dialog({
+    title: 'Confirmar Exclusão',
+    message: `Tem certeza que deseja excluir o produto "${produto.nome}"? Esta ação o tornará inativo.`,
+    cancel: true,
+    persistent: true,
+  }).onOk(async () => {
+    try {
+      await dataStore.excluirProduto(produto)
+      $q.notify({ type: 'info', message: 'Produto excluído.' })
+    } catch (error) {
+      $q.notify({ type: 'negative', message: error.message })
+    }
+  })
 }
 </script>
-
-<style scoped>
-/* Todo o CSS customizado foi removido. A estilização agora é controlada pelo Quasar. */
-</style>

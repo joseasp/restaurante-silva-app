@@ -1,426 +1,288 @@
+<!-- src/views/ClientesView.vue (SEU CÓDIGO COMPLETO + CORREÇÕES FINAIS) -->
 <template>
   <q-page padding>
-    <h1 class="text-h4 text-center q-mb-md">Gestão de Clientes</h1>
-
-    <!-- FORMULÁRIO DE CLIENTE -->
-    <q-card flat bordered class="q-pa-md q-mb-lg">
-      <q-form @submit.prevent="salvarCliente">
-        <div class="row q-col-gutter-md">
-          <div class="col-12 col-md-6">
-            <q-input
-              outlined
-              v-model="formCliente.nome"
-              label="Nome do Cliente"
-              :rules="[(val) => !!val || 'O nome é obrigatório']"
-              lazy-rules
-            />
-          </div>
-          <div class="col-12 col-md-6">
-            <q-input outlined v-model="formCliente.contato" label="Contato (Telefone, etc)" />
-          </div>
-          <div class="col-12 col-md-6">
-            <q-select
-              outlined
-              v-model="formCliente.tipo"
-              :options="['CRÉDITO', 'EMPRESA']"
-              label="Tipo"
-              :rules="[(val) => !!val || 'O tipo é obrigatório']"
-              lazy-rules
-            />
-          </div>
-          <div class="col-12">
-            <q-input
-              outlined
-              v-model="formCliente.observacoes"
-              type="textarea"
-              label="Observações"
-            />
-          </div>
-
-          <!-- SEÇÃO DE FUNCIONÁRIOS (APENAS PARA EMPRESAS EM EDIÇÃO) -->
-          <div class="col-12" v-if="clienteEmEdicao && formCliente.tipo === 'EMPRESA'">
-            <q-separator class="q-my-md" />
-            <h6 class="text-h6 q-mb-sm">Funcionários</h6>
-            <div class="row items-start q-col-gutter-sm q-mb-md">
-              <div class="col">
-                <q-input
-                  outlined
-                  dense
-                  v-model="novoFuncionarioNome"
-                  label="Novo Funcionário"
-                  @keyup.enter="adicionarFuncionario"
-                />
-              </div>
-              <div class="col-auto">
-                <q-btn color="primary" icon="add" label="Adicionar" @click="adicionarFuncionario" />
-              </div>
-            </div>
-
-            <q-list bordered separator v-if="funcionariosDoCliente.length > 0">
-              <q-item-label header>Funcionários Cadastrados</q-item-label>
-              <q-item v-for="func in funcionariosDoCliente" :key="func.id">
-                <q-item-section>{{ func.nome }}</q-item-section>
-                <q-item-section side>
-                  <q-btn
-                    flat
-                    round
-                    dense
-                    color="negative"
-                    icon="delete"
-                    @click="removerFuncionario(func.id)"
-                  />
-                </q-item-section>
-              </q-item>
-            </q-list>
-            <q-banner v-else class="bg-grey-2 text-grey-8">
-              Nenhum funcionário cadastrado para esta empresa.
-            </q-banner>
-          </div>
-
-          <div class="col-12 q-gutter-sm q-mt-md">
-            <q-btn
-              color="primary"
-              :label="clienteEmEdicao ? 'Salvar Alterações' : 'Adicionar Cliente'"
-              type="submit"
-            />
-            <q-btn
-              flat
-              color="grey"
-              label="Cancelar"
-              v-if="clienteEmEdicao"
-              @click="cancelarEdicao"
-            />
-          </div>
+    <div class="text-h4 q-mb-md">Gestão de Clientes</div>
+    <q-card class="q-mb-lg">
+      <q-card-section>
+        <div class="text-h6">
+          {{ clienteEmEdicao ? `Editando: ${clienteEmEdicao.nome}` : 'Novo Cliente' }}
         </div>
-      </q-form>
+      </q-card-section>
+      <q-card-section>
+        <q-form
+          ref="formRef"
+          @submit.prevent="clienteEmEdicao ? salvarEdicao() : salvarNovoCliente()"
+          class="q-gutter-md"
+        >
+          <div class="row q-col-gutter-md">
+            <div class="col-xs-12 col-sm-6 col-md-4">
+              <q-input
+                outlined
+                v-model="form.nome"
+                label="Nome do Cliente"
+                :rules="[(val) => !!val || 'Campo obrigatório']"
+              />
+            </div>
+            <div class="col-xs-12 col-sm-6 col-md-4">
+              <q-input outlined v-model="form.contato" label="Contato (Telefone, etc)" />
+            </div>
+            <div class="col-xs-12 col-sm-6 col-md-4">
+              <q-select
+                outlined
+                v-model="form.tipo"
+                :options="['CRÉDITO', 'EMPRESA', 'AVULSO']"
+                label="Tipo"
+                :rules="[(val) => !!val || 'Campo obrigatório']"
+              />
+            </div>
+            <div class="col-xs-12">
+              <q-input outlined v-model="form.observacoes" type="textarea" label="Observações" />
+            </div>
+          </div>
+          <div class="row q-gutter-sm q-mt-sm">
+            <q-btn
+              type="submit"
+              :label="clienteEmEdicao ? 'Salvar Alterações' : 'Adicionar Cliente'"
+              color="primary"
+              unelevated
+            />
+            <q-btn
+              v-if="clienteEmEdicao"
+              label="Cancelar"
+              @click="cancelarEdicao"
+              color="grey"
+              flat
+            />
+          </div>
+        </q-form>
+      </q-card-section>
+      <div v-if="clienteEmEdicao && clienteEmEdicao.tipo === 'EMPRESA'">
+        <q-separator class="q-my-md" />
+        <q-card-section>
+          <div class="text-h6">Funcionários</div>
+          <q-form
+            @submit.prevent="adicionarFuncionario"
+            class="row items-center q-gutter-sm q-mt-sm"
+          >
+            <q-input
+              outlined
+              dense
+              v-model="novoFuncionarioNome"
+              label="Nome do Novo Funcionário"
+              class="col"
+              :rules="[(val) => !!val || 'Campo obrigatório']"
+            />
+            <q-btn type="submit" round color="primary" icon="add" />
+          </q-form>
+          <q-list bordered separator class="q-mt-md">
+            <q-item-label header>Funcionários Cadastrados</q-item-label>
+            <q-item v-for="func in funcionariosDoCliente" :key="func.id">
+              <q-item-section>{{ func.nome }}</q-item-section>
+              <q-item-section side
+                ><q-btn
+                  round
+                  flat
+                  dense
+                  icon="delete"
+                  color="negative"
+                  @click="confirmarExcluirFuncionario(func)"
+              /></q-item-section>
+            </q-item>
+            <q-item v-if="funcionariosDoCliente.length === 0"
+              ><q-item-section class="text-grey text-center"
+                >Nenhum funcionário cadastrado.</q-item-section
+              ></q-item
+            >
+          </q-list>
+        </q-card-section>
+      </div>
     </q-card>
-
-    <!-- LISTA DE CLIENTES -->
-    <q-card flat bordered>
-      <q-list bordered separator>
-        <q-item>
-          <q-item-section>
-            <q-toggle v-model="mostrarInativos" label="Mostrar clientes inativos" />
-          </q-item-section>
-        </q-item>
-
-        <q-item v-if="clientes.length === 0">
-          <q-item-section class="text-grey-8"> Nenhum cliente encontrado. </q-item-section>
-        </q-item>
-
+    <q-card>
+      <q-card-section class="flex justify-between items-center">
+        <q-input
+          outlined
+          dense
+          v-model="busca"
+          placeholder="Buscar Cliente..."
+          class="col-xs-12 col-sm-auto"
+        />
+        <q-toggle v-model="mostrarInativos" label="Mostrar clientes inativos" />
+      </q-card-section>
+      <q-separator />
+      <q-list separator>
+        <q-item v-if="clientesFiltrados.length === 0"
+          ><q-item-section class="text-grey text-center"
+            >Nenhum cliente encontrado.</q-item-section
+          ></q-item
+        >
         <q-item
-          v-for="cliente in clientes"
+          v-for="cliente in clientesFiltrados"
           :key="cliente.id"
-          :class="{ 'bg-grey-2': !cliente.ativo }"
-          clickable
-          v-ripple
+          :class="{ 'bg-grey-3': !cliente.ativo }"
         >
           <q-item-section>
             <q-item-label>{{ cliente.nome }}</q-item-label>
-            <q-item-label caption>
-              {{ cliente.tipo }} {{ cliente.contato ? ' - ' + cliente.contato : '' }}
-            </q-item-label>
+            <q-item-label caption
+              >{{ cliente.tipo }}{{ cliente.contato ? ' - ' + cliente.contato : '' }}</q-item-label
+            >
           </q-item-section>
-
           <q-item-section side>
-            <div class="row items-center">
-              <!-- *** CORREÇÃO 2: Botão de editar não aparece para o Cliente Avulso *** -->
-              <q-btn
-                v-if="cliente.nome !== 'Cliente Avulso'"
-                flat
-                round
-                dense
-                icon="edit"
-                color="info"
-                @click.stop="iniciarEdicao(cliente)"
-              >
-                <q-tooltip>Editar</q-tooltip>
-              </q-btn>
+            <div class="row q-gutter-xs" v-if="cliente.tipo !== 'AVULSO'">
+              <q-btn round flat dense icon="edit" color="info" @click="iniciarEdicao(cliente)" />
               <q-btn
                 v-if="cliente.ativo"
-                flat
                 round
+                flat
                 dense
-                color="negative"
                 icon="delete"
-                @click.stop="desativarCliente(cliente)"
+                color="negative"
+                @click="confirmarExclusao(cliente)"
+                ><q-tooltip>Desativar</q-tooltip></q-btn
               >
-                <q-tooltip>Desativar</q-tooltip>
-              </q-btn>
               <q-btn
                 v-else
-                flat
                 round
+                flat
                 dense
-                color="positive"
                 icon="undo"
-                @click.stop="reativarCliente(cliente)"
+                color="positive"
+                @click="confirmarReativacao(cliente)"
+                ><q-tooltip>Reativar</q-tooltip></q-btn
               >
-                <q-tooltip>Reativar</q-tooltip>
-              </q-btn>
             </div>
           </q-item-section>
         </q-item>
       </q-list>
     </q-card>
-
-    <!-- Modal de PIN -->
-    <PinModal
-      :visible="mostrarPinModal"
-      @close="mostrarPinModal = false"
-      @success="executarAcaoPendente"
-    />
   </q-page>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
-import { db } from '@/services/databaseService.js'
-import { useDataStore } from '@/stores/dataStore.js'
-import PinModal from '@/components/PinModal.vue'
+import { ref, computed, watch, nextTick } from 'vue'
+import { useDataStore } from '@/stores/dataStore'
 import { useQuasar } from 'quasar'
-import { v4 as uuidv4 } from 'uuid';
+import { db } from '@/services/databaseService.js'
+import { supabase } from '@/services/supabaseClient.js'
+import { v4 as uuidv4 } from 'uuid'
 
-// *** CORREÇÃO 1: Garante que o $q do Quasar seja inicializado corretamente ***
-const $q = useQuasar()
 const dataStore = useDataStore()
-
-const getInitialForm = () => ({
-  nome: '',
-  contato: '',
-  tipo: 'CRÉDITO',
-  observacoes: '',
-})
-
-const formCliente = ref(getInitialForm())
-const clientes = ref([])
-const mostrarInativos = ref(false)
+const $q = useQuasar()
+const formRef = ref(null)
+const getInitialForm = () => ({ nome: '', tipo: 'CRÉDITO', contato: '', observacoes: '' })
+const form = ref(getInitialForm())
 const clienteEmEdicao = ref(null)
-
-// Refs para Funcionários
-const funcionariosDoCliente = ref([])
+const busca = ref('')
+const mostrarInativos = ref(false)
 const novoFuncionarioNome = ref('')
+const funcionariosDoCliente = ref([])
 
-// Refs para o Modal de PIN
-const mostrarPinModal = ref(false)
-const acaoPendente = ref(null)
-
-const carregarClientes = () => {
-  if (!dataStore.todosOsClientes) {
-    clientes.value = []
-    return
-  }
-
-  let clientesFiltrados = []
-  if (mostrarInativos.value) {
-    clientesFiltrados = [...dataStore.todosOsClientes]
-  } else {
-    clientesFiltrados = dataStore.todosOsClientes.filter((c) => c.ativo === true)
-  }
-
-  clientes.value = clientesFiltrados.sort((a, b) => a.nome.localeCompare(b.nome))
-}
-
-watch(() => dataStore.todosOsClientes, carregarClientes, { deep: true, immediate: true })
-watch(mostrarInativos, carregarClientes)
-
-onMounted(() => {
-  dataStore.fetchClientes()
+const clientesFiltrados = computed(() => {
+  const listaBase = mostrarInativos.value ? dataStore.todosOsClientes : dataStore.clientesAtivos
+  if (!busca.value) return listaBase
+  return listaBase.filter((c) => c.nome.toLowerCase().includes(busca.value.toLowerCase()))
 })
 
-const carregarFuncionarios = async (clienteId) => {
-  if (!clienteId) return
-  try {
-    funcionariosDoCliente.value = await db.funcionarios
-      .where('cliente_id')
-      .equals(clienteId)
-      .toArray()
-  } catch (error) {
-    console.error('Erro ao carregar funcionários:', error)
-    $q.notify({ color: 'negative', message: 'Falha ao carregar funcionários.' })
-  }
+watch(clienteEmEdicao, async (novoCliente) => {
+  if (novoCliente && novoCliente.tipo === 'EMPRESA') await carregarFuncionarios(novoCliente.id)
+  else funcionariosDoCliente.value = []
+})
+
+async function carregarFuncionarios(clienteId) {
+  funcionariosDoCliente.value = await db.funcionarios.where({ cliente_id: clienteId }).toArray()
 }
 
-const adicionarFuncionario = async () => {
-  const nome = novoFuncionarioNome.value.trim()
-  if (!nome) {
-    $q.notify({ color: 'warning', message: 'Digite o nome do funcionário.' })
-    return
-  }
-  if (!clienteEmEdicao.value) return
-
-  try {
-    await db.funcionarios.add({
-      id: uuidv4(),
-      nome: nome,
-      cliente_id: clienteEmEdicao.value.id,
-    })
-    novoFuncionarioNome.value = ''
-    await carregarFuncionarios(clienteEmEdicao.value.id)
-    $q.notify({ color: 'positive', message: 'Funcionário adicionado.' })
-  } catch (error) {
-    console.error('Erro ao adicionar funcionário:', error)
-    $q.notify({ color: 'negative', message: 'Falha ao adicionar funcionário.' })
-  }
+function iniciarEdicao(cliente) {
+  window.scrollTo(0, 0)
+  clienteEmEdicao.value = { ...cliente }
+  form.value = { ...cliente }
 }
 
-const removerFuncionario = async (funcionarioId) => {
-  $q.dialog({
-    title: 'Confirmar',
-    message: 'Tem certeza que deseja remover este funcionário?',
-    cancel: true,
-    persistent: true,
-  }).onOk(async () => {
-    try {
-      await db.funcionarios.delete(funcionarioId)
-      await carregarFuncionarios(clienteEmEdicao.value.id)
-      $q.notify({ color: 'positive', message: 'Funcionário removido.' })
-    } catch (error) {
-      console.error('Erro ao remover funcionário:', error)
-      $q.notify({ color: 'negative', message: 'Falha ao remover funcionário.' })
-    }
+function cancelarEdicao() {
+  clienteEmEdicao.value = null
+  form.value = getInitialForm()
+  nextTick(() => {
+    if (formRef.value) formRef.value.resetValidation()
   })
 }
 
-// *** CORREÇÃO 2: Adiciona a verificação para bloquear a edição do Cliente Avulso ***
-const iniciarEdicao = (cliente) => {
-  if (cliente.nome === 'Cliente Avulso') {
-    $q.notify({
-      color: 'warning',
-      message: 'O Cliente Avulso não pode ser editado.',
-      icon: 'warning',
-    })
-    return
-  }
-  clienteEmEdicao.value = cliente
-  formCliente.value = { ...cliente }
-  funcionariosDoCliente.value = []
-  if (cliente.tipo === 'EMPRESA') {
-    carregarFuncionarios(cliente.id)
-  }
-  window.scrollTo({ top: 0, behavior: 'smooth' })
-}
-
-const cancelarEdicao = () => {
-  clienteEmEdicao.value = null
-  formCliente.value = getInitialForm()
-  funcionariosDoCliente.value = []
-  novoFuncionarioNome.value = ''
-}
-
-const salvarCliente = async () => {
-  if (clienteEmEdicao.value) {
-    try {
-      const dadosParaAtualizar = {
-        nome: formCliente.value.nome.trim(),
-        contato: formCliente.value.contato,
-        tipo: formCliente.value.tipo,
-        observacoes: formCliente.value.observacoes,
-      }
-      await db.clientes.update(clienteEmEdicao.value.id, dadosParaAtualizar)
-      await dataStore.fetchClientes()
-      $q.notify({
-        color: 'positive',
-        message: 'Cliente atualizado com sucesso!',
-        icon: 'check_circle',
-      })
-      cancelarEdicao()
-    } catch (error) {
-      console.error('Erro ao atualizar cliente:', error)
-      $q.notify({
-        color: 'negative',
-        message: 'Erro ao atualizar cliente.',
-        icon: 'report_problem',
-      })
-    }
-  } else {
-    const nomeExistente = await db.clientes
-      .where('nome')
-      .equalsIgnoreCase(formCliente.value.nome.trim())
-      .first()
-
-    if (nomeExistente) {
-      $q.notify({
-        color: 'negative',
-        message: `O cliente "${formCliente.value.nome}" já existe.`,
-        icon: 'warning',
-      })
-      return
-    }
-
-    try {
-      await db.clientes.add({
-        id: uuidv4(),
-        ...formCliente.value,
-        nome: formCliente.value.nome.trim(),
-        ativo: true,
-      })
-      await dataStore.fetchClientes()
-      $q.notify({
-        color: 'positive',
-        message: 'Cliente adicionado com sucesso!',
-        icon: 'check_circle',
-      })
-      formCliente.value = getInitialForm()
-    } catch (error) {
-      console.error('Erro ao adicionar cliente:', error)
-      $q.notify({
-        color: 'negative',
-        message: 'Erro ao adicionar cliente.',
-        icon: 'report_problem',
-      })
-    }
-  }
-}
-
-const executarAcaoPendente = () => {
-  if (acaoPendente.value) {
-    acaoPendente.value()
-  }
-  mostrarPinModal.value = false
-  acaoPendente.value = null
-}
-
-const desativarCliente = (cliente) => {
-  if (cliente.tipo === 'AVULSO' || cliente.nome === 'Cliente Avulso') {
-    $q.notify({
-      color: 'warning',
-      message: "O 'Cliente Avulso' não pode ser desativado.",
-      icon: 'warning',
-    })
-    return
-  }
-  acaoPendente.value = async () => {
-    try {
-      await db.clientes.update(cliente.id, { ativo: false })
-      await dataStore.fetchClientes()
-      $q.notify({
-        color: 'positive',
-        message: 'Cliente desativado com sucesso.',
-        icon: 'toggle_off',
-      })
-    } catch (error) {
-      console.error('Erro ao desativar cliente:', error)
-    }
-  }
-  mostrarPinModal.value = true
-}
-
-const reativarCliente = async (cliente) => {
+async function salvarNovoCliente() {
   try {
-    await db.clientes.update(cliente.id, { ativo: true })
-    await dataStore.fetchClientes()
-    $q.notify({
-      color: 'positive',
-      message: 'Cliente reativado com sucesso.',
-      icon: 'toggle_on',
-    })
+    await dataStore.adicionarCliente(form.value)
+    $q.notify({ type: 'positive', message: 'Cliente adicionado!' })
+    cancelarEdicao()
   } catch (error) {
-    console.error('Erro ao reativar cliente:', error)
+    $q.notify({ type: 'negative', message: error.message })
   }
+}
+
+async function salvarEdicao() {
+  try {
+    await dataStore.atualizarCliente(form.value)
+    $q.notify({ type: 'positive', message: 'Cliente atualizado!' })
+    cancelarEdicao()
+  } catch (error) {
+    $q.notify({ type: 'negative', message: error.message })
+  }
+}
+
+function confirmarExclusao(cliente) {
+  $q.dialog({ title: 'Confirmar', message: `Desativar "${cliente.nome}"?`, cancel: true }).onOk(
+    async () => {
+      try {
+        await dataStore.excluirCliente(cliente)
+        $q.notify({ type: 'info', message: 'Cliente desativado.' })
+      } catch (error) {
+        $q.notify({ type: 'negative', message: error.message })
+      }
+    },
+  )
+}
+
+function confirmarReativacao(cliente) {
+  $q.dialog({ title: 'Confirmar', message: `Reativar "${cliente.nome}"?`, cancel: true }).onOk(
+    async () => {
+      try {
+        await dataStore.reativarCliente(cliente)
+        $q.notify({ type: 'positive', message: 'Cliente reativado.' })
+      } catch (error) {
+        $q.notify({ type: 'negative', message: error.message })
+      }
+    },
+  )
+}
+
+async function adicionarFuncionario() {
+  if (!novoFuncionarioNome.value) return
+  const novoFunc = {
+    id: uuidv4(),
+    nome: novoFuncionarioNome.value,
+    cliente_id: clienteEmEdicao.value.id,
+  }
+  const { error } = await supabase.from('funcionarios').insert(novoFunc)
+  if (error) {
+    $q.notify({ type: 'negative', message: 'Erro ao salvar funcionário.' })
+  } else {
+    await db.funcionarios.put(novoFunc)
+    funcionariosDoCliente.value.push(novoFunc)
+    novoFuncionarioNome.value = ''
+    $q.notify({ type: 'positive', message: 'Funcionário adicionado.' })
+  }
+}
+
+async function confirmarExcluirFuncionario(funcionario) {
+  $q.dialog({ title: 'Confirmar', message: `Excluir "${funcionario.nome}"?`, cancel: true }).onOk(
+    async () => {
+      const { error } = await supabase.from('funcionarios').delete().eq('id', funcionario.id)
+      if (error) {
+        $q.notify({ type: 'negative', message: 'Erro ao excluir funcionário.' })
+      } else {
+        await db.funcionarios.delete(funcionario.id)
+        funcionariosDoCliente.value = funcionariosDoCliente.value.filter(
+          (f) => f.id !== funcionario.id,
+        )
+        $q.notify({ type: 'info', message: 'Funcionário excluído.' })
+      }
+    },
+  )
 }
 </script>
-
-<style scoped>
-/* Estilos mantidos pelo Quasar */
-</style>

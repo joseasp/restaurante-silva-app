@@ -17,6 +17,7 @@
     "@quasar/extras": "^1.17.0",
     "@quasar/vite-plugin": "^1.10.0",
     "@supabase/supabase-js": "^2.56.1",
+    "@vueuse/rxjs": "^14.0.0-alpha.0",
     "dexie": "^4.2.0",
     "pinia": "^3.0.3",
     "quasar": "^2.18.2",

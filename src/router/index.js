@@ -24,8 +24,8 @@ const router = createRouter({
       component: () => import('../views/ClientesView.vue')
     },
     {
-      path: '/contas-receber',
-      name: 'contas-receber',
+      path: '/contas-a-receber',
+      name: 'contas-a-receber',
       component: () => import('../views/ContasReceberView.vue')
     },
     {

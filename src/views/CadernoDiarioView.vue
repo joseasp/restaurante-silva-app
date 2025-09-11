@@ -21,6 +21,16 @@
             {{ lancamentoEmEdicao ? 'Editando Lançamento' : 'Novo Lançamento' }}
           </div>
           <q-form @submit.prevent="lancarPedido" class="q-gutter-md">
+            <div v-if="statusEnvio" :class="{
+              'text-primary': statusEnvio === 'enviando',
+              'text-positive': statusEnvio === 'sucesso',
+              'text-negative': statusEnvio === 'erro',
+            }" class="q-mb-sm">
+              <q-spinner v-if="statusEnvio === 'enviando'" size="1em" class="q-mr-xs" />
+              <span v-if="statusEnvio === 'enviando'">Enviando lançamento...</span>
+              <span v-else-if="statusEnvio === 'sucesso'">Lançamento enviado com sucesso!</span>
+              <span v-else-if="statusEnvio === 'erro'">Erro ao enviar lançamento. Tente novamente.</span>
+            </div>
             <!-- SELEÇÃO DE CLIENTE -->
             <div v-if="!pedidoAtual.cliente">
               <q-input
@@ -36,10 +46,10 @@
               </q-input>
               <q-list bordered separator v-if="clientesFiltrados.length">
                 <q-item
-                  clickable
-                  v-ripple
                   v-for="cliente in clientesFiltrados"
                   :key="cliente.id"
+                  clickable
+                  v-ripple
                   @click="selecionarCliente(cliente)"
                 >
                   <q-item-section>{{ cliente.nome }}</q-item-section>
@@ -72,12 +82,14 @@
               outlined
               dense
               use-input
-              hide-selected
               fill-input
+              hide-selected
               input-debounce="0"
               :options="funcionariosFiltrados"
-              @filter="filterFn"
-              :rules="[(val) => !!val || 'Campo obrigatório']"
+              :filter="filterFn"
+              new-value-mode="add"
+              @new-value="(val, done) => done(val)"
+              :rules="[]"
             >
               <template v-slot:no-option>
                 <q-item>
@@ -119,47 +131,41 @@
                 </q-btn>
               </div>
             </div>
-
-            <!-- ITENS DO PEDIDO -->
-            <q-card flat bordered>
-              <q-card-section class="flex justify-between items-center q-py-sm">
-                <div class="text-subtitle1">Itens do Pedido</div>
-                <div class="text-weight-bold">Total: R$ {{ totalPedido.toFixed(2) }}</div>
-              </q-card-section>
-              <q-separator />
-              <q-list separator>
-                <q-item v-if="pedidoAtual.itens.length === 0">
-                  <q-item-section class="text-grey text-center">
-                    Nenhum item adicionado
-                  </q-item-section>
-                </q-item>
-                <q-item v-for="(item, index) in pedidoAtual.itens" :key="index">
-                  <q-item-section>
-                    <q-item-label>{{ item.nome_produto_congelado }}</q-item-label>
-                    <q-item-label caption>
-                      R$ {{ (item.preco_unitario_congelado * item.quantidade).toFixed(2) }}
-                    </q-item-label>
-                  </q-item-section>
-                  <q-item-section side>
-                    <div class="flex items-center q-gutter-xs">
-                      <q-btn round dense flat icon="remove" @click="decrementarItem(item, index)" />
-                      <span class="text-body1 text-weight-bold">{{ item.quantidade }}</span>
-                      <q-btn round dense flat icon="add" @click="incrementarItem(item)" />
-                    </div>
-                  </q-item-section>
-                  <q-item-section side>
-                    <q-btn
-                      round
-                      dense
-                      flat
-                      color="negative"
-                      icon="close"
-                      @click="removerItem(index)"
-                    />
-                  </q-item-section>
-                </q-item>
-              </q-list>
-            </q-card>
+            <div class="text-subtitle1 q-mt-md">Itens do Pedido</div>
+            <div class="text-weight-bold">Total: R$ {{ totalPedido.toFixed(2) }}</div>
+            <q-separator class="q-my-sm" />
+            <q-list separator>
+              <q-item v-if="pedidoAtual.itens.length === 0">
+                <q-item-section class="text-grey text-center">
+                  Nenhum item adicionado
+                </q-item-section>
+              </q-item>
+              <q-item v-for="(item, index) in pedidoAtual.itens" :key="index">
+                <q-item-section>
+                  <q-item-label>{{ item.nome_produto_congelado }}</q-item-label>
+                  <q-item-label caption>
+                    R$ {{ (item.preco_unitario_congelado * item.quantidade).toFixed(2) }}
+                  </q-item-label>
+                </q-item-section>
+                <q-item-section side>
+                  <div class="flex items-center q-gutter-xs">
+                    <q-btn round dense flat icon="remove" @click="decrementarItem(item, index)" />
+                    <span class="text-body1 text-weight-bold">{{ item.quantidade }}</span>
+                    <q-btn round dense flat icon="add" @click="incrementarItem(item)" />
+                  </div>
+                </q-item-section>
+                <q-item-section side>
+                  <q-btn
+                    round
+                    dense
+                    flat
+                    color="negative"
+                    icon="close"
+                    @click="removerItem(index)"
+                  />
+                </q-item-section>
+              </q-item>
+            </q-list>
 
             <q-input
               v-model="pedidoAtual.observacoes"
@@ -435,13 +441,18 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed } from 'vue'
+const statusEnvio = ref('')
 import { useQuasar } from 'quasar'
 import { useDataStore } from '@/stores/dataStore.js'
-import { db } from '@/services/databaseService.js';
+import { db } from '@/services/databaseService.js'
 import { DADOS_RESTAURANTE } from '@/config.js'
 import PinModal from '@/components/PinModal.vue'
+<<<<<<< HEAD
 import { useTransactions } from '@/composables/useTransactions.js'
+=======
+import { useRealtimeTransactions } from '@/composables/useRealtimeTransactions.js'
+>>>>>>> 37e3c15 (ANTIGO - PRA ANÁLISE PRA UPDATE)
 
 const $q = useQuasar()
 const dataStore = useDataStore()
@@ -455,6 +466,9 @@ const produtosParaSelecao = computed(() => dataStore.produtosAtivos || [])
 const hoje = new Date()
 hoje.setMinutes(hoje.getMinutes() - hoje.getTimezoneOffset())
 const dataSelecionada = ref(hoje.toISOString().slice(0, 10))
+
+const { transactions: lancamentosDoDia } = useRealtimeTransactions(dataSelecionada)
+
 const buscaCliente = ref('')
 const buscaProduto = ref('')
 const lancamentoEmEdicao = ref(null)
@@ -507,6 +521,8 @@ const produtosFiltrados = computed(() => {
   )
 })
 
+// Função de seleção de cliente removida (não utilizada no template)
+// Selecionar cliente (restaurado para funcionamento da lista)
 const selecionarCliente = async (cliente) => {
   pedidoAtual.value.cliente = cliente
   buscaCliente.value = ''
@@ -515,11 +531,12 @@ const selecionarCliente = async (cliente) => {
 
   if (cliente.tipo === 'EMPRESA') {
     try {
-      const funcionarios = await db.funcionarios.where('cliente_id').equals(cliente.id).toArray();
-      funcionariosDaEmpresaSelecionada.value = funcionarios.map(f => f.nome);
-    } catch (error) {
-      console.error("Erro ao buscar funcionários:", error);
-      $q.notify({ type: 'negative', message: 'Falha ao carregar funcionários da empresa.' });
+      const funcionarios = await db.funcionarios.where('cliente_id').equals(cliente.id).toArray()
+      funcionariosDaEmpresaSelecionada.value = funcionarios.map((f) => f.nome)
+      funcionariosFiltrados.value = funcionariosDaEmpresaSelecionada.value
+    } catch (err) {
+      console.error('Erro ao buscar funcionários:', err)
+      $q.notify({ type: 'negative', message: 'Falha ao carregar funcionários da empresa.' })
     }
   }
 }
@@ -577,12 +594,29 @@ const totalPedido = computed(() => {
   )
 })
 
+<<<<<<< HEAD
 const carregarDadosIniciais = async () => {
   await dataStore.fetchClientes()
   await dataStore.fetchProdutos()
 }
+=======
+// Evita múltiplos envios acelerados
+const isSubmitting = ref(false)
+let ultimoEnvioTs = 0
+>>>>>>> 37e3c15 (ANTIGO - PRA ANÁLISE PRA UPDATE)
 
 const lancarPedido = async () => {
+  const agora = Date.now()
+  if (isSubmitting.value) {
+    $q.notify({ type: 'warning', message: 'Já estamos enviando o lançamento...' })
+    return
+  }
+  // Proteção contra double-click muito rápido (<500ms)
+  if (agora - ultimoEnvioTs < 500) {
+    $q.notify({ type: 'warning', message: 'Aguarde um instante...' })
+    return
+  }
+  ultimoEnvioTs = agora
   if (!pedidoAtual.value.cliente || pedidoAtual.value.itens.length === 0) {
     $q.notify({ type: 'warning', message: 'Selecione um cliente e adicione pelo menos um item.' })
     return
@@ -605,6 +639,7 @@ const lancarPedido = async () => {
     created_at: new Date(),
   }
 
+<<<<<<< HEAD
   await addTransaction({ ...novaTransacao, itens: pedidoAtual.value.itens });
 
   lancamentoEmEdicao.value = null
@@ -612,6 +647,43 @@ const lancarPedido = async () => {
   buscaCliente.value = ''
   funcionariosDaEmpresaSelecionada.value = []
   $q.notify({ type: 'positive', message: 'Lançamento realizado com sucesso!' })
+=======
+  statusEnvio.value = 'enviando'
+  isSubmitting.value = true
+  // Salva nome de funcionário digitado, se não existir ainda
+  if (
+    pedidoAtual.value.cliente &&
+    pedidoAtual.value.cliente.tipo === 'EMPRESA' &&
+    pedidoAtual.value.nome_funcionario &&
+    !funcionariosDaEmpresaSelecionada.value.includes(pedidoAtual.value.nome_funcionario)
+  ) {
+    try {
+      await db.funcionarios.add({
+        nome: pedidoAtual.value.nome_funcionario,
+        cliente_id: pedidoAtual.value.cliente.id,
+        created_at: new Date(),
+      })
+      funcionariosDaEmpresaSelecionada.value.push(pedidoAtual.value.nome_funcionario)
+  } catch {
+      // Se já existe, ignora
+    }
+  }
+  try {
+    await dataStore.lancarPedido(novaTransacao, pedidoAtual.value.itens)
+    lancamentoEmEdicao.value = null
+    pedidoAtual.value = getInitialPedido()
+    buscaCliente.value = ''
+    funcionariosDaEmpresaSelecionada.value = []
+    statusEnvio.value = 'sucesso'
+    setTimeout(() => { statusEnvio.value = '' }, 2000)
+  } catch {
+    statusEnvio.value = 'erro'
+    setTimeout(() => { statusEnvio.value = '' }, 3000)
+  } finally {
+    // Dá um pequeno atraso para evitar spam de clique se a resposta for instantânea
+    setTimeout(() => { isSubmitting.value = false }, 400)
+  }
+>>>>>>> 37e3c15 (ANTIGO - PRA ANÁLISE PRA UPDATE)
 }
 
 const iniciarEdicaoLancamento = async (lancamento) => {
@@ -620,13 +692,16 @@ const iniciarEdicaoLancamento = async (lancamento) => {
 
   if (clienteParaEditar && clienteParaEditar.tipo === 'EMPRESA') {
     try {
-        const funcionarios = await db.funcionarios.where('cliente_id').equals(clienteParaEditar.id).toArray();
-        funcionariosDaEmpresaSelecionada.value = funcionarios.map(f => f.nome);
+      const funcionarios = await db.funcionarios
+        .where('cliente_id')
+        .equals(clienteParaEditar.id)
+        .toArray()
+      funcionariosDaEmpresaSelecionada.value = funcionarios.map((f) => f.nome)
     } catch (error) {
-        console.error("Erro ao buscar funcionários na edição:", error);
+      console.error('Erro ao buscar funcionários na edição:', error)
     }
   } else {
-      funcionariosDaEmpresaSelecionada.value = [];
+    funcionariosDaEmpresaSelecionada.value = []
   }
 
   pedidoAtual.value.cliente = clienteParaEditar
@@ -715,7 +790,7 @@ const filterFn = (val, update) => {
   update(() => {
     const needle = val.toLowerCase()
     funcionariosFiltrados.value = funcionariosDaEmpresaSelecionada.value.filter(
-      v => v.toLowerCase().indexOf(needle) > -1
+      (v) => v.toLowerCase().indexOf(needle) > -1,
     )
   })
 }
@@ -876,6 +951,7 @@ const imprimirCadernoDoDia = () => {
   }, 1000)
 }
 
+<<<<<<< HEAD
 watch(dataSelecionada, (novaData) => {
   fetchTransactions(novaData)
   resumoVisivel.value = false
@@ -895,3 +971,8 @@ onMounted(() => {
   opacity: 0.8;
 }
 </style>
+=======
+// onMounted foi removido, pois o `dataStore` agora lida com o carregamento inicial
+// de forma global na aplicação.
+</script>
+>>>>>>> 37e3c15 (ANTIGO - PRA ANÁLISE PRA UPDATE)
