@@ -441,18 +441,15 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 const statusEnvio = ref('')
 import { useQuasar } from 'quasar'
 import { useDataStore } from '@/stores/dataStore.js'
 import { db } from '@/services/databaseService.js'
 import { DADOS_RESTAURANTE } from '@/config.js'
 import PinModal from '@/components/PinModal.vue'
-<<<<<<< HEAD
-import { useTransactions } from '@/composables/useTransactions.js'
-=======
 import { useRealtimeTransactions } from '@/composables/useRealtimeTransactions.js'
->>>>>>> 37e3c15 (ANTIGO - PRA ANÁLISE PRA UPDATE)
+import { useTransactions } from '@/composables/useTransactions.js'
 
 const $q = useQuasar()
 const dataStore = useDataStore()
@@ -594,16 +591,14 @@ const totalPedido = computed(() => {
   )
 })
 
-<<<<<<< HEAD
 const carregarDadosIniciais = async () => {
   await dataStore.fetchClientes()
   await dataStore.fetchProdutos()
 }
-=======
+
 // Evita múltiplos envios acelerados
 const isSubmitting = ref(false)
 let ultimoEnvioTs = 0
->>>>>>> 37e3c15 (ANTIGO - PRA ANÁLISE PRA UPDATE)
 
 const lancarPedido = async () => {
   const agora = Date.now()
@@ -639,15 +634,6 @@ const lancarPedido = async () => {
     created_at: new Date(),
   }
 
-<<<<<<< HEAD
-  await addTransaction({ ...novaTransacao, itens: pedidoAtual.value.itens });
-
-  lancamentoEmEdicao.value = null
-  pedidoAtual.value = getInitialPedido()
-  buscaCliente.value = ''
-  funcionariosDaEmpresaSelecionada.value = []
-  $q.notify({ type: 'positive', message: 'Lançamento realizado com sucesso!' })
-=======
   statusEnvio.value = 'enviando'
   isSubmitting.value = true
   // Salva nome de funcionário digitado, se não existir ainda
@@ -683,7 +669,6 @@ const lancarPedido = async () => {
     // Dá um pequeno atraso para evitar spam de clique se a resposta for instantânea
     setTimeout(() => { isSubmitting.value = false }, 400)
   }
->>>>>>> 37e3c15 (ANTIGO - PRA ANÁLISE PRA UPDATE)
 }
 
 const iniciarEdicaoLancamento = async (lancamento) => {
@@ -951,9 +936,7 @@ const imprimirCadernoDoDia = () => {
   }, 1000)
 }
 
-<<<<<<< HEAD
 watch(dataSelecionada, (novaData) => {
-  fetchTransactions(novaData)
   resumoVisivel.value = false
 }, { immediate: true })
 
@@ -971,8 +954,3 @@ onMounted(() => {
   opacity: 0.8;
 }
 </style>
-=======
-// onMounted foi removido, pois o `dataStore` agora lida com o carregamento inicial
-// de forma global na aplicação.
-</script>
->>>>>>> 37e3c15 (ANTIGO - PRA ANÁLISE PRA UPDATE)
