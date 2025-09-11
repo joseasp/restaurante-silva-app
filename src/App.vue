@@ -19,6 +19,16 @@
           <q-route-tab to="/contas-receber" label="Contas a Receber" />
           <q-route-tab to="/relatorios" label="Relatórios" />
         </q-tabs>
+        <q-btn
+          flat
+          dense
+          icon="refresh"
+          :loading="atualizando"
+          @click="atualizarAgora"
+          class="q-ml-md"
+        >
+          <q-tooltip>Atualizar agora</q-tooltip>
+        </q-btn>
       </q-toolbar>
     </q-header>
 
@@ -36,10 +46,32 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import { useDataStore } from '@/stores/dataStore.js'
+import { useQuasar } from 'quasar'
 import { onMounted } from 'vue'
 
 const dataStore = useDataStore()
+const $q = useQuasar()
+const atualizando = ref(false)
+
+async function atualizarAgora() {
+  if (atualizando.value) return
+  atualizando.value = true
+  try {
+    await Promise.all([
+      dataStore.fetchClientes(),
+      dataStore.fetchProdutos(),
+      dataStore.fetchTransacoesDoDia && dataStore.fetchTransacoesDoDia(new Date().toISOString().slice(0, 10))
+    ])
+    $q.notify({ type: 'positive', message: 'Atualizado' })
+  } catch (e) {
+    console.error(e)
+    $q.notify({ type: 'negative', message: 'Falha ao atualizar' })
+  } finally {
+    atualizando.value = false
+  }
+}
 
 onMounted(() => {
   dataStore.initialize()

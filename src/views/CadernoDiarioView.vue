@@ -221,7 +221,7 @@
           </div>
           <div v-else>
             <q-card
-              v-for="lancamento in lancamentosDoDia"
+              v-for="lancamento in pedidosOrdenados"
               :key="lancamento.id"
               flat
               bordered
@@ -449,7 +449,24 @@ const splitterModel = ref(35)
 
 const clientesParaSelecao = computed(() => dataStore.clientesAtivos || [])
 const produtosParaSelecao = computed(() => dataStore.produtosAtivos || [])
+
 const lancamentosDoDia = computed(() => dataStore.transacoes || [])
+
+// Computed para ordenar os pedidos/lancamentos conforme solicitado
+const pedidosOrdenados = computed(() => {
+  return [...lancamentosDoDia.value]
+    .sort((a, b) => {
+      // 1. PENDENTE antes de PRONTO (ou outro status)
+      const aPend = a.status_preparo === 'PENDENTE' ? 0 : 1
+      const bPend = b.status_preparo === 'PENDENTE' ? 0 : 1
+      if (aPend !== bPend) return aPend - bPend
+
+      // 2. Dentro dos PENDENTES: mais ANTIGO primeiro (created_at menor)
+      const dateA = new Date(a.created_at)
+      const dateB = new Date(b.created_at)
+      return dateA - dateB
+    })
+})
 
 const hoje = new Date()
 hoje.setMinutes(hoje.getMinutes() - hoje.getTimezoneOffset())

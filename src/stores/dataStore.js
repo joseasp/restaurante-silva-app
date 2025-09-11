@@ -100,7 +100,8 @@ export const useDataStore = defineStore('data', () => {
   }
 
   async function syncData() {
-    console.log("Iniciando rotina de sincronização...");
+  return  // PAUSADO TEMPORARIAMENTE
+  // console.log("Iniciando rotina de sincronização...");
     try {
       // Sincroniza em ordem de dependência
       
