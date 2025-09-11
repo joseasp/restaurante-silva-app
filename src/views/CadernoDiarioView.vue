@@ -31,42 +31,32 @@
     </div>
 
     <!-- Main Content -->
-    <div class="main-content">
-      <q-splitter
-        v-model="splitterModel"
-        :limits="[25, 75]"
-        class="full-height"
-      >
-        <!-- Left Panel - New Order Form -->
-        <template v-slot:before>
-          <div class="left-panel">
-            <NewOrderForm
-              v-model="currentOrder"
-              :is-editing="isEditing"
-              :submission-status="submissionStatus"
-              :is-submitting="isSubmitting"
-              @submit="handleOrderSubmit"
-              @cancel-edit="cancelEdit"
-            />
-          </div>
-        </template>
+    <div class="main-content-grid">
+      <!-- Left Panel - New Order Form -->
+      <div class="left-panel">
+        <NewOrderForm
+          v-model="currentOrder"
+          :is-editing="isEditing"
+          :submission-status="submissionStatus"
+          :is-submitting="isSubmitting"
+          @submit="handleOrderSubmit"
+          @cancel-edit="cancelEdit"
+        />
+      </div>
 
-        <!-- Right Panel - Orders List -->
-        <template v-slot:after>
-          <div class="right-panel">
-            <OrdersList
-              :orders="ordersOfDay"
-              :loading="ordersLoading"
-              @edit-order="handleEditOrder"
-              @cancel-order="handleCancelOrder"
-              @toggle-payment="handleTogglePayment"
-              @toggle-status="handleToggleStatus"
-              @change-payment-form="handleChangePaymentForm"
-              @print-order="handlePrintOrder"
-            />
-          </div>
-        </template>
-      </q-splitter>
+      <!-- Right Panel - Orders List -->
+      <div class="right-panel">
+        <OrdersList
+          :orders="ordersOfDay"
+          :loading="ordersLoading"
+          @edit-order="handleEditOrder"
+          @cancel-order="handleCancelOrder"
+          @toggle-payment="handleTogglePayment"
+          @toggle-status="handleToggleStatus"
+          @change-payment-form="handleChangePaymentForm"
+          @print-order="handlePrintOrder"
+        />
+      </div>
     </div>
 
     <!-- PIN Modal for Protected Actions -->
@@ -95,7 +85,6 @@ const $q = useQuasar()
 const dataStore = useDataStore()
 
 // Reactive state
-const splitterModel = ref(35)
 const isEditing = ref(false)
 const isSubmitting = ref(false)
 const submissionStatus = ref('') // 'sending', 'success', 'error'
@@ -582,9 +571,12 @@ onMounted(async () => {
   background: rgba(255, 255, 255, 0.2);
 }
 
-.main-content {
+.main-content-grid {
   flex: 1;
   min-height: 0;
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  gap: 1rem;
 }
 
 .left-panel,
@@ -617,6 +609,11 @@ onMounted(async () => {
   .page-title {
     text-align: center;
     font-size: 1.2rem;
+  }
+  
+  .main-content-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
   }
   
   .left-panel,
