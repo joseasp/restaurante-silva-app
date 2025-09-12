@@ -1,9 +1,9 @@
 <template>
   <q-page padding>
     <div class="toolbar-dia flex justify-between items-center q-mb-md">
-      <div class="text-h4">{{ dataExibicao }}</div>
+      <div :class="['', isMobile ? 'text-h5' : 'text-h4']">{{ dataExibicao }}</div>
       <div class="flex items-center q-gutter-md">
-        <q-input outlined dense v-model="dataSelecionada" type="date" style="width: 150px" />
+        <q-input outlined dense v-model="dataSelecionada" type="date" :style="isMobile ? 'width: 140px' : 'width: 150px'" />
         <q-btn
           @click="imprimirCadernoDoDia"
           color="primary"
@@ -409,7 +409,7 @@
     <q-tab name="form" label="Novo" icon="add_circle" />
   </q-tabs>
 
-  <q-tab-panels v-model="abaMobile" animated transition-prev="slide-right" transition-next="slide-left">
+  <q-tab-panels v-model="abaMobile" animated transition-prev="slide-right" transition-next="slide-left" class="q-pa-sm">
     <q-tab-panel name="lista" class="q-pa-none">
   <div class="q-pa-sm">
     <div
@@ -425,7 +425,7 @@
         :key="lancamento.id"
         flat
         bordered
-        class="q-mb-sm"
+        class="q-mb-xs"
         :class="{
           'bg-amber-1': lancamento.status_preparo === 'PENDENTE' && !lancamento.estornado,
           'bg-grey-3 text-grey-7 estornado-style': lancamento.estornado,
