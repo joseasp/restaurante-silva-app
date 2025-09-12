@@ -1,10 +1,13 @@
-<template>
-  <q-dialog v-model="isOpen">
-    <q-card style="min-width: 300px">
-      <q-card-section class="text-h6">PIN</q-card-section>
+﻿<template>
+  <q-dialog v-model="isOpen" persistent>
+    <q-card style="min-width: 320px">
+      <q-card-section class="text-h6">{{ title }}</q-card-section>
+      <q-card-section class="q-pt-none">
+        <div class="text-body2">{{ message }}</div>
+      </q-card-section>
       <q-card-actions align="right">
-        <q-btn flat label="Fechar" color="primary" @click="$emit('close')" />
-        <q-btn label="OK" color="primary" @click="$emit('success')" />
+        <q-btn flat color="primary" label="Cancelar" @click="emit('close')" />
+        <q-btn color="primary" label="OK" @click="emit('success')" />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -12,90 +15,21 @@
 
 <script setup>
 import { computed } from 'vue'
-const props = defineProps({ visible: { type: Boolean, default: false } })
+
+const props = defineProps({
+  visible: { type: Boolean, default: false },
+  title: { type: String, default: 'Confirmação' },
+  message: { type: String, default: 'Confirme a ação protegida por PIN.' }
+})
+
+const emit = defineEmits(['close', 'success'])
+
 const isOpen = computed({
   get: () => props.visible,
-  set: (v) => { if (!v) { /* emits close when user hides */ } }
+  set: (v) => { if (!v) emit('close') }
 })
-</script>
-        pinInput.value?.focus()
-      })
-    }
-  },
-)
-
-const handleConfirm = () => {
-  if (pin.value === PIN_CORRETO) {
-    emit('success')
-  } else {
-    errorMessage.value = 'PIN incorreto.'
-    pin.value = ''
-    pinInput.value?.focus()
-  }
-}
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background-color: rgba(0, 0, 0, 0.6);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-}
-.modal-content {
-  background: white;
-  padding: 25px 30px;
-  border-radius: 8px;
-  width: 320px;
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-  text-align: center;
-}
-.modal-content h3 {
-  margin-top: 0;
-  margin-bottom: 15px;
-}
-.modal-content input {
-  width: 100%;
-  padding: 10px;
-  text-align: center;
-  font-size: 1.5em;
-  letter-spacing: 0.5em;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  margin-bottom: 10px;
-  box-sizing: border-box;
-}
-.error-message {
-  color: #dc3545;
-  min-height: 20px;
-}
-.modal-actions {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-}
-.modal-actions button {
-  flex-grow: 1;
-  padding: 10px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: bold;
-}
-.modal-actions button:first-of-type {
-  /* Botão Cancelar */
-  background-color: #6c757d;
-  color: white;
-}
-.modal-actions button:last-of-type {
-  /* Botão Confirmar */
-  background-color: #198754;
-  color: white;
-}
+/* estilos mínimos opcionais */
 </style>

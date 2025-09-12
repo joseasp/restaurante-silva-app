@@ -1,779 +1,867 @@
 <template>
   <q-page padding>
     <div class="toolbar-dia flex justify-between items-center q-mb-md">
-      <div :class="['', isMobile ? 'text-h5' : 'text-h4']">{{ dataExibicao }}</div>
+      <div class="text-h4 q-mb-none gt-sm">{{ dataExibicao }}</div>
       <div class="flex items-center q-gutter-md">
-        <q-input outlined dense v-model="dataSelecionada" type="date" :style="isMobile ? 'width: 140px' : 'width: 150px'" />
-        <q-btn
-          @click="imprimirCadernoDoDia"
-          color="primary"
-          icon="print"
-          label="Imprimir Dia"
-          outline
-        />
-      </div>
-    </div>
-
-<!-- Desktop: Splitter -->
-<div v-if="!isMobile">
-  <q-splitter v-model="splitterModel" style="height: calc(100vh - 150px)">
-    <template v-slot:before>
-      <div class="q-pa-md">
-        <div class="text-h5 q-mb-md">
-          {{ lancamentoEmEdicao ? 'Editando Lançamento' : 'Novo Lançamento' }}
-        </div>
-        <q-form @submit.prevent="lancarPedido" class="q-gutter-md">
-          <!-- SELEÇÃO DE CLIENTE -->
-          <div v-if="!pedidoAtual.cliente">
-            <q-input
-              outlined
-              v-model="buscaCliente"
-              label="Buscar Cliente..."
-              dense
-              class="q-mb-xs"
-            >
-              <template v-slot:append>
-                <q-icon name="search" />
-              </template>
-            </q-input>
-            <q-list bordered separator v-if="clientesFiltrados.length">
-              <q-item
-                clickable
-                v-ripple
-                v-for="cliente in clientesFiltrados"
-                :key="cliente.id"
-                @click="selecionarCliente(cliente)"
-              >
-                <q-item-section>{{ cliente.nome }}</q-item-section>
-              </q-item>
-            </q-list>
-            <q-btn
-              outline
-              color="primary"
-              @click="selecionarClienteAvulso"
-              label="Venda Avulsa"
-              class="full-width q-mt-sm"
-            />
-          </div>
-          <div v-else>
-            <q-chip
-              removable
-              @remove="removerCliente"
-              color="primary"
-              text-color="white"
-              icon="person"
-              :label="pedidoAtual.cliente.nome"
-            />
-          </div>
-
-          <!-- NOME DO FUNCIONÁRIO (EMPRESA) -->
-          <q-select
-            v-if="pedidoAtual.cliente && pedidoAtual.cliente.tipo === 'EMPRESA'"
-            v-model="pedidoAtual.nome_funcionario"
-            label="Nome do Funcionário"
-            outlined
-            dense
-            use-input
-            hide-selected
-            fill-input
-            input-debounce="0"
-            :options="funcionariosFiltrados"
-            @filter="filterFn"
-            :rules="[(val) => !!val || 'Campo obrigatório']"
-          >
-            <template v-slot:no-option>
-              <q-item>
-                <q-item-section class="text-grey">
-                  Nenhum funcionário encontrado. Digite para adicionar.
-                </q-item-section>
-              </q-item>
-            </template>
-          </q-select>
-
-          <!-- SELEÇÃO DE PRODUTO -->
-          <div class="row q-col-gutter-sm items-center">
-            <div class="col">
-              <q-input
-                outlined
-                v-model="buscaProduto"
-                label="Buscar Produto..."
-                dense
-                class="q-mb-xs"
-              >
-                <template v-slot:append> <q-icon name="search" /> </template>
-              </q-input>
-              <q-list bordered separator v-if="produtosFiltrados.length">
-                <q-item
-                  clickable
-                  v-ripple
-                  v-for="produto in produtosFiltrados"
-                  :key="produto.id"
-                  @click="adicionarItem(produto)"
-                >
-                  <q-item-section>{{ produto.nome }}</q-item-section>
-                  <q-item-section side>R$ {{ produto.preco.toFixed(2) }}</q-item-section>
-                </q-item>
-              </q-list>
-            </div>
-            <div class="col-auto">
-              <q-btn round dense color="primary" icon="add" @click="abrirModalItemAvulso">
-                <q-tooltip>Adicionar Item Avulso</q-tooltip>
-              </q-btn>
-            </div>
-          </div>
-
-          <!-- ITENS DO PEDIDO -->
-          <q-card flat bordered>
-            <q-card-section class="flex justify-between items-center q-py-sm">
-              <div class="text-subtitle1">Itens do Pedido</div>
-              <div class="text-weight-bold">Total: R$ {{ totalPedido.toFixed(2) }}</div>
-            </q-card-section>
-            <q-separator />
-            <q-list separator>
-              <q-item v-if="pedidoAtual.itens.length === 0">
-                <q-item-section class="text-grey text-center">
-                  Nenhum item adicionado
-                </q-item-section>
-              </q-item>
-              <q-item v-for="(item, index) in pedidoAtual.itens" :key="index">
-                <q-item-section>
-                  <q-item-label>{{ item.nome_produto_congelado }}</q-item-label>
-                  <q-item-label caption>
-                    R$ {{ (item.preco_unitario_congelado * item.quantidade).toFixed(2) }}
-                  </q-item-label>
-                </q-item-section>
-                <q-item-section side>
-                  <div class="flex items-center q-gutter-xs">
-                    <q-btn round dense flat icon="remove" @click="decrementarItem(item, index)" />
-                    <span class="text-body1 text-weight-bold">{{ item.quantidade }}</span>
-                    <q-btn round dense flat icon="add" @click="incrementarItem(item)" />
-                  </div>
-                </q-item-section>
-                <q-item-section side>
-                  <q-btn
-                    round
-                    dense
-                    flat
-                    color="negative"
-                    icon="close"
-                    @click="removerItem(index)"
-                  />
-                </q-item-section>
-              </q-item>
-            </q-list>
-          </q-card>
-
-          <q-input
-            v-model="pedidoAtual.observacoes"
-            outlined
-            type="textarea"
-            label="Observações"
-            dense
-          />
-
-          <q-btn-toggle
-            v-model="pedidoAtual.metodo_pagamento"
-            spread
-            no-caps
-            :toggle-color="pedidoAtual.metodo_pagamento === 'Pago' ? 'positive' : 'warning'"
-            color="white"
-            text-color="black"
-            :options="[
-              {
-                label: 'Não Pago',
-                value: 'Não Pago',
-                disable: pedidoAtual.cliente && pedidoAtual.cliente.tipo === 'AVULSO',
-              },
-              { label: 'Pago', value: 'Pago' },
-            ]"
-          />
-
-          <q-select
-            v-if="pedidoAtual.metodo_pagamento === 'Pago'"
-            outlined
-            v-model="pedidoAtual.forma_pagamento_venda"
-            :options="['Dinheiro', 'PIX', 'Cartão']"
-            label="Forma de Pagamento (Opcional)"
-            dense
-            emit-value
-            map-options
-            clearable
-          />
-
-          <q-btn
-            type="submit"
-            color="positive"
-            size="lg"
-            class="full-width"
-            :label="lancamentoEmEdicao ? 'Salvar Alterações' : 'Lançar no Caderno'"
-            icon="check_circle"
-          />
-        </q-form>
-      </div>
-    </template>
-
-    <template v-slot:after>
-      <div class="q-pa-md">
-        <div
-          v-if="!lancamentosDoDia || lancamentosDoDia.length === 0"
-          class="text-center text-grey q-mt-xl"
-        >
-          <q-icon name="inbox" size="xl" />
-          <p>Nenhum lançamento para esta data.</p>
-        </div>
-        <div v-else>
-          <q-card
-            v-for="lancamento in pedidosOrdenados"
-            :key="lancamento.id"
-            flat
-            bordered
-            class="q-mb-sm"
-            :class="{
-              'bg-amber-1': lancamento.status_preparo === 'PENDENTE' && !lancamento.estornado,
-              'bg-grey-3 text-grey-7 estornado-style': lancamento.estornado,
-            }"
-          >
-            <q-card-section>
-              <div class="flex items-start justify-between">
-                <div class="col">
-                  <div class="text-weight-bold">
-                    {{ lancamento.cliente_nome }}
-                    <span
-                      v-if="lancamento.nome_funcionario_empresa"
-                      class="text-caption text-weight-regular"
-                    >
-                      ({{ lancamento.nome_funcionario_empresa }})
-                    </span>
-                  </div>
-                  <div class="text-h6 text-primary text-weight-bolder">
-                    R$ {{ lancamento.valor.toFixed(2) }}
-                  </div>
-                </div>
-                <div class="col-auto flex items-center q-gutter-sm">
-                  <q-badge
-                    :color="lancamento.status_preparo === 'PENDENTE' ? 'orange' : 'positive'"
-                    class="q-pa-sm cursor-pointer"
-                    @click="!lancamento.estornado && alternarStatusPreparo(lancamento)"
-                  >
-                    {{ lancamento.status_preparo }}
-                  </q-badge>
-
-                  <q-badge
-                    :color="lancamento.metodo_pagamento === 'Não Pago' ? 'negative' : 'positive'"
-                    class="q-pa-sm cursor-pointer"
-                    @click="!lancamento.estornado && alternarStatusPagamento(lancamento)"
-                  >
-                    {{ lancamento.metodo_pagamento }}
-                    <span
-                      v-if="lancamento.metodo_pagamento === 'Pago' && lancamento.forma_pagamento"
-                      class="q-ml-xs text-caption opacity-80"
-                    >
-                      ({{ lancamento.forma_pagamento }})
-                    </span>
-                  </q-badge>
-
-                  <q-btn
-                    v-if="lancamento.metodo_pagamento === 'Pago' && !lancamento.estornado"
-                    flat
-                    round
-                    dense
-                    icon="payment"
-                  >
-                    <q-tooltip>Alterar Forma de Pagamento</q-tooltip>
-                    <q-menu auto-close anchor="bottom middle" self="top middle">
-                      <q-btn-group flat>
-                        <q-btn
-                          flat
-                          label="Dinheiro"
-                          dense
-                          @click="atualizarFormaPagamento(lancamento, 'Dinheiro')"
-                          :class="{
-                            'bg-primary text-white': lancamento.forma_pagamento === 'Dinheiro',
-                          }"
-                        />
-                        <q-btn
-                          flat
-                          label="PIX"
-                          dense
-                          @click="atualizarFormaPagamento(lancamento, 'PIX')"
-                          :class="{
-                            'bg-primary text-white': lancamento.forma_pagamento === 'PIX',
-                          }"
-                        />
-                        <q-btn
-                          flat
-                          label="Cartão"
-                          dense
-                          @click="atualizarFormaPagamento(lancamento, 'Cartão')"
-                          :class="{
-                            'bg-primary text-white': lancamento.forma_pagamento === 'Cartão',
-                          }"
-                        />
-                        <q-btn
-                          flat
-                          dense
-                          icon="backspace"
-                          @click="atualizarFormaPagamento(lancamento, null)"
-                        >
-                          <q-tooltip>Limpar</q-tooltip>
-                        </q-btn>
-                      </q-btn-group>
-                    </q-menu>
-                  </q-btn>
-
-                  <q-btn flat round dense icon="more_vert" :disable="lancamento.estornado">
-                    <q-menu auto-close>
-                      <q-list style="min-width: 100px">
-                        <q-item clickable @click="iniciarEdicaoLancamento(lancamento)">
-                          <q-item-section avatar><q-icon name="edit" /></q-item-section>
-                          <q-item-section>Editar</q-item-section>
-                        </q-item>
-                        <q-item clickable @click="imprimirComprovante(lancamento)">
-                          <q-item-section avatar><q-icon name="print" /></q-item-section>
-                          <q-item-section>Imprimir</q-item-section>
-                        </q-item>
-                        <q-separator />
-                        <q-item
-                          clickable
-                          class="text-negative"
-                          @click="estornarLancamento(lancamento)"
-                        >
-                          <q-item-section avatar><q-icon name="delete" /></q-item-section>
-                          <q-item-section>Estornar</q-item-section>
-                        </q-item>
-                      </q-list>
-                    </q-menu>
-                  </q-btn>
-                </div>
-              </div>
-              <q-list dense padding class="q-ml-md" v-if="lancamento.itens.length > 0">
-                <q-item v-for="item in lancamento.itens" :key="item.id" class="q-pa-none">
-                  <q-item-section class="text-grey-8"
-                    >- {{ item.quantidade }}x {{ item.nome_produto_congelado }}</q-item-section
-                  >
-                </q-item>
-              </q-list>
-
-              <q-banner dense class="bg-amber-2 text-dark q-mt-sm" v-if="lancamento.observacoes">
-                <template v-slot:avatar> <q-icon name="info" /> </template>
-                {{ lancamento.observacoes }}
-              </q-banner>
-            </q-card-section>
-          </q-card>
-
-          <!-- RESUMO DIÁRIO -->
-          <q-card flat bordered class="q-mt-lg">
-            <q-card-section horizontal>
-              <q-card-section class="col">
-                <div>Total de Vendas</div>
-                <div class="text-h6 text-weight-bold">
-                  <span v-if="resumoVisivel">{{ resumoDiario.totalVendas }}</span>
-                  <span v-else>••••</span>
-                </div>
-              </q-card-section>
-              <q-separator vertical />
-              <q-card-section class="col">
-                <div>Faturamento do Dia</div>
-                <div class="text-h6 text-weight-bold text-positive">
-                  <span v-if="resumoVisivel">R$ {{ resumoDiario.faturamento.toFixed(2) }}</span>
-                  <span v-else>R$ ••••</span>
-                </div>
-              </q-card-section>
-              <q-card-actions>
-                <q-btn
-                  flat
-                  round
-                  :icon="resumoVisivel ? 'visibility_off' : 'visibility'"
-                  @click="revelarResumo"
-                />
-              </q-card-actions>
-            </q-card-section>
-          </q-card>
-        </div>
-      </div>
-    </template>
-  </q-splitter>
-</div>
-
-<!-- Mobile: Abas -->
-<div v-else>
-  <q-tabs
-    v-model="abaMobile"
-    class="text-dark bg-white q-mb-sm"
-    active-color="primary"
-    indicator-color="primary"
-    no-caps
-    narrow-indicator
-  >
-    <q-tab name="lista" label="Pedidos" icon="list" />
-    <q-tab name="form" label="Novo" icon="add_circle" />
-  </q-tabs>
-
-  <q-tab-panels v-model="abaMobile" animated transition-prev="slide-right" transition-next="slide-left" class="q-pa-sm">
-    <q-tab-panel name="lista" class="q-pa-none">
-  <div class="q-pa-sm">
-    <div
-      v-if="!lancamentosDoDia || lancamentosDoDia.length === 0"
-      class="text-center text-grey q-mt-xl"
-    >
-      <q-icon name="inbox" size="xl" />
-      <p>Nenhum lançamento para esta data.</p>
-    </div>
-    <div v-else>
-      <q-card
-        v-for="lancamento in pedidosOrdenados"
-        :key="lancamento.id"
-        flat
-        bordered
-        class="q-mb-xs"
-        :class="{
-          'bg-amber-1': lancamento.status_preparo === 'PENDENTE' && !lancamento.estornado,
-          'bg-grey-3 text-grey-7 estornado-style': lancamento.estornado,
-        }"
-      >
-        <q-card-section>
-          <div class="flex items-start justify-between">
-            <div class="col">
-              <div class="text-weight-bold">
-                {{ lancamento.cliente_nome }}
-                <span
-                  v-if="lancamento.nome_funcionario_empresa"
-                  class="text-caption text-weight-regular"
-                >
-                  ({{ lancamento.nome_funcionario_empresa }})
-                </span>
-              </div>
-              <div class="text-h6 text-primary text-weight-bolder">
-                R$ {{ lancamento.valor.toFixed(2) }}
-              </div>
-            </div>
-            <div class="col-auto flex items-center q-gutter-sm">
-              <q-badge
-                :color="lancamento.status_preparo === 'PENDENTE' ? 'orange' : 'positive'"
-                class="q-pa-sm cursor-pointer"
-                @click="!lancamento.estornado && alternarStatusPreparo(lancamento)"
-              >
-                {{ lancamento.status_preparo }}
-              </q-badge>
-
-              <q-badge
-                :color="lancamento.metodo_pagamento === 'Não Pago' ? 'negative' : 'positive'"
-                class="q-pa-sm cursor-pointer"
-                @click="!lancamento.estornado && alternarStatusPagamento(lancamento)"
-              >
-                {{ lancamento.metodo_pagamento }}
-                <span
-                  v-if="lancamento.metodo_pagamento === 'Pago' && lancamento.forma_pagamento"
-                  class="q-ml-xs text-caption opacity-80"
-                >
-                  ({{ lancamento.forma_pagamento }})
-                </span>
-              </q-badge>
-
-              <q-btn
-                v-if="lancamento.metodo_pagamento === 'Pago' && !lancamento.estornado"
-                flat
-                round
-                dense
-                icon="payment"
-              >
-                <q-tooltip>Alterar Forma de Pagamento</q-tooltip>
-                <q-menu auto-close anchor="bottom middle" self="top middle">
-                  <q-btn-group flat>
-                    <q-btn
-                      flat
-                      label="Dinheiro"
-                      dense
-                      @click="atualizarFormaPagamento(lancamento, 'Dinheiro')"
-                      :class="{ 'bg-primary text-white': lancamento.forma_pagamento === 'Dinheiro' }"
-                    />
-                    <q-btn
-                      flat
-                      label="PIX"
-                      dense
-                      @click="atualizarFormaPagamento(lancamento, 'PIX')"
-                      :class="{ 'bg-primary text-white': lancamento.forma_pagamento === 'PIX' }"
-                    />
-                    <q-btn
-                      flat
-                      label="Cartão"
-                      dense
-                      @click="atualizarFormaPagamento(lancamento, 'Cartão')"
-                      :class="{ 'bg-primary text-white': lancamento.forma_pagamento === 'Cartão' }"
-                    />
-                    <q-btn flat dense icon="backspace" @click="atualizarFormaPagamento(lancamento, null)">
-                      <q-tooltip>Limpar</q-tooltip>
-                    </q-btn>
-                  </q-btn-group>
-                </q-menu>
-              </q-btn>
-
-              <q-btn flat round dense icon="more_vert" :disable="lancamento.estornado">
-                <q-menu auto-close>
-                  <q-list style="min-width: 100px">
-                    <q-item clickable @click="iniciarEdicaoLancamento(lancamento)">
-                      <q-item-section avatar><q-icon name="edit" /></q-item-section>
-                      <q-item-section>Editar</q-item-section>
-                    </q-item>
-                    <q-item clickable @click="imprimirComprovante(lancamento)">
-                      <q-item-section avatar><q-icon name="print" /></q-item-section>
-                      <q-item-section>Imprimir</q-item-section>
-                    </q-item>
-                    <q-separator />
-                    <q-item clickable class="text-negative" @click="estornarLancamento(lancamento)">
-                      <q-item-section avatar><q-icon name="delete" /></q-item-section>
-                      <q-item-section>Estornar</q-item-section>
-                    </q-item>
-                  </q-list>
-                </q-menu>
-              </q-btn>
-            </div>
-          </div>
-
-          <q-list dense padding class="q-ml-md" v-if="lancamento.itens.length > 0">
-            <q-item v-for="item in lancamento.itens" :key="item.id" class="q-pa-none">
-              <q-item-section class="text-grey-8">
-                - {{ item.quantidade }}x {{ item.nome_produto_congelado }}
-              </q-item-section>
-            </q-item>
-          </q-list>
-
-          <q-banner dense class="bg-amber-2 text-dark q-mt-sm" v-if="lancamento.observacoes">
-            <template v-slot:avatar> <q-icon name="info" /> </template>
-            {{ lancamento.observacoes }}
-          </q-banner>
-        </q-card-section>
-      </q-card>
-
-      <!-- RESUMO DIÁRIO -->
-      <q-card flat bordered class="q-mt-lg">
-        <q-card-section horizontal>
-          <q-card-section class="col">
-            <div>Total de Vendas</div>
-            <div class="text-h6 text-weight-bold">
-              <span v-if="resumoVisivel">{{ resumoDiario.totalVendas }}</span>
-              <span v-else>••••</span>
-            </div>
-          </q-card-section>
-          <q-separator vertical />
-          <q-card-section class="col">
-            <div>Faturamento do Dia</div>
-            <div class="text-h6 text-weight-bold text-positive">
-              <span v-if="resumoVisivel">R$ {{ resumoDiario.faturamento.toFixed(2) }}</span>
-              <span v-else>R$ ••••</span>
-            </div>
-          </q-card-section>
-          <q-card-actions>
-            <q-btn
-              flat
-              round
-              :icon="resumoVisivel ? 'visibility_off' : 'visibility'"
-              @click="revelarResumo"
-            />
-          </q-card-actions>
-        </q-card-section>
-      </q-card>
-    </div>
-  </div>
-    </q-tab-panel>
-
-    <q-tab-panel name="form" class="q-pa-none">
-  <div class="q-pa-sm">
-    <div class="text-subtitle1 q-mb-sm">
-      {{ lancamentoEmEdicao ? 'Editando Lançamento' : 'Novo Lançamento' }}
-    </div>
-
-    <q-form @submit.prevent="lancarPedido" class="q-gutter-md">
-      <!-- SELEÇÃO DE CLIENTE -->
-      <div v-if="!pedidoAtual.cliente">
         <q-input
           outlined
-          v-model="buscaCliente"
-          label="Buscar Cliente..."
           dense
-          class="q-mb-xs"
-        >
-          <template v-slot:append>
-            <q-icon name="search" />
-          </template>
-        </q-input>
-        <q-list bordered separator v-if="clientesFiltrados.length">
-          <q-item
-            clickable
-            v-ripple
-            v-for="cliente in clientesFiltrados"
-            :key="cliente.id"
-            @click="selecionarCliente(cliente)"
-          >
-            <q-item-section>{{ cliente.nome }}</q-item-section>
-          </q-item>
-        </q-list>
+          v-model="dataSelecionada"
+          type="date"
+          :style="isMobile ? 'width: 140px' : 'width: 160px'"
+        />
         <q-btn
-          outline
-          color="primary"
-          @click="selecionarClienteAvulso"
-          label="Venda Avulsa"
-          class="full-width q-mt-sm"
-        />
+          @click="imprimirCadernoDoDia"
+          color="warning"
+          icon="print"
+          :label="!isMobile ? 'IMPRIMIR DIA' : null"
+          :round="isMobile"
+          :dense="isMobile"
+          no-caps
+        >
+          <q-tooltip v-if="isMobile">Imprimir dia</q-tooltip>
+        </q-btn>
       </div>
-      <div v-else>
-        <q-chip
-          removable
-          @remove="removerCliente"
-          color="primary"
-          text-color="white"
-          icon="person"
-          :label="pedidoAtual.cliente.nome"
-        />
-      </div>
+    </div>
 
-      <!-- NOME DO FUNCIONÁRIO (EMPRESA) -->
-      <q-select
-        v-if="pedidoAtual.cliente && pedidoAtual.cliente.tipo === 'EMPRESA'"
-        v-model="pedidoAtual.nome_funcionario"
-        label="Nome do Funcionário"
-        outlined
-        dense
-        use-input
-        hide-selected
-        fill-input
-        input-debounce="0"
-        :options="funcionariosFiltrados"
-        @filter="filterFn"
-        :rules="[(val) => !!val || 'Campo obrigatório']"
-      >
-        <template v-slot:no-option>
-          <q-item>
-            <q-item-section class="text-grey">
-              Nenhum funcionário encontrado. Digite para adicionar.
-            </q-item-section>
-          </q-item>
-        </template>
-      </q-select>
+    <!-- Desktop: Splitter -->
+    <div v-if="!isMobile">
+      <q-splitter v-model="splitterModel" style="height: calc(100vh - 150px)">
+        <template v-slot:before>
+          <div class="q-pa-md">
+            <div class="text-h5 q-mb-md">
+              {{ lancamentoEmEdicao ? 'Editando Lançamento' : 'Novo Lançamento' }}
+            </div>
 
-      <!-- SELEÇÃO DE PRODUTO -->
-      <div class="row q-col-gutter-sm items-center">
-        <div class="col">
-          <q-input
-            outlined
-            v-model="buscaProduto"
-            label="Buscar Produto..."
-            dense
-            class="q-mb-xs"
-          >
-            <template v-slot:append> <q-icon name="search" /> </template>
-          </q-input>
-          <q-list bordered separator v-if="produtosFiltrados.length">
-            <q-item
-              clickable
-              v-ripple
-              v-for="produto in produtosFiltrados"
-              :key="produto.id"
-              @click="adicionarItem(produto)"
-            >
-              <q-item-section>{{ produto.nome }}</q-item-section>
-              <q-item-section side>R$ {{ produto.preco.toFixed(2) }}</q-item-section>
-            </q-item>
-          </q-list>
-        </div>
-        <div class="col-auto">
-          <q-btn round dense color="primary" icon="add" @click="abrirModalItemAvulso">
-            <q-tooltip>Adicionar Item Avulso</q-tooltip>
-          </q-btn>
-        </div>
-      </div>
+            <q-form @submit.prevent="lancarPedido" class="q-gutter-md">
+              <!-- SELEÇÃO DE CLIENTE -->
+              <div v-if="!pedidoAtual.cliente">
+                <q-input
+                  outlined
+                  v-model="buscaCliente"
+                  label="Buscar Cliente..."
+                  dense
+                  class="q-mb-xs"
+                >
+                  <template v-slot:append>
+                    <q-icon name="search" />
+                  </template>
+                </q-input>
 
-      <!-- ITENS DO PEDIDO -->
-      <q-card flat bordered>
-        <q-card-section class="flex justify-between items-center q-py-sm">
-          <div class="text-subtitle1">Itens do Pedido</div>
-          <div class="text-weight-bold">Total: R$ {{ totalPedido.toFixed(2) }}</div>
-        </q-card-section>
-        <q-separator />
-        <q-list separator>
-          <q-item v-if="pedidoAtual.itens.length === 0">
-            <q-item-section class="text-grey text-center">
-              Nenhum item adicionado
-            </q-item-section>
-          </q-item>
-          <q-item v-for="(item, index) in pedidoAtual.itens" :key="index">
-            <q-item-section>
-              <q-item-label>{{ item.nome_produto_congelado }}</q-item-label>
-              <q-item-label caption>
-                R$ {{ (item.preco_unitario_congelado * item.quantidade).toFixed(2) }}
-              </q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <div class="flex items-center q-gutter-xs">
-                <q-btn round dense flat icon="remove" @click="decrementarItem(item, index)" />
-                <span class="text-body1 text-weight-bold">{{ item.quantidade }}</span>
-                <q-btn round dense flat icon="add" @click="incrementarItem(item)" />
+                <q-list bordered separator v-if="clientesFiltrados.length">
+                  <q-item
+                    clickable
+                    v-ripple
+                    v-for="cliente in clientesFiltrados"
+                    :key="cliente.id"
+                    @click="selecionarCliente(cliente)"
+                  >
+                    <q-item-section>{{ cliente.nome }}</q-item-section>
+                  </q-item>
+                </q-list>
+
+                <q-btn
+                  outline
+                  color="primary"
+                  @click="selecionarClienteAvulso"
+                  label="Venda Avulsa"
+                  class="full-width q-mt-sm"
+                />
               </div>
-            </q-item-section>
-            <q-item-section side>
-              <q-btn
-                round
+
+              <div v-else>
+                <q-chip
+                  removable
+                  @remove="removerCliente"
+                  color="primary"
+                  text-color="white"
+                  icon="person"
+                  :label="pedidoAtual.cliente.nome"
+                />
+              </div>
+
+              <!-- NOME DO FUNCIONÁRIO (EMPRESA) -->
+              <q-select
+                v-if="pedidoAtual.cliente && pedidoAtual.cliente.tipo === 'EMPRESA'"
+                v-model="pedidoAtual.nome_funcionario"
+                label="Nome do Funcionário"
+                outlined
                 dense
-                flat
-                color="negative"
-                icon="close"
-                @click="removerItem(index)"
+                use-input
+                hide-selected
+                fill-input
+                input-debounce="0"
+                :options="funcionariosFiltrados"
+                @filter="filterFn"
+                :rules="[(val) => !!val || 'Campo obrigatório']"
+              >
+                <template v-slot:no-option>
+                  <q-item>
+                    <q-item-section class="text-grey">
+                      Nenhum funcionário encontrado. Digite para adicionar.
+                    </q-item-section>
+                  </q-item>
+                </template>
+              </q-select>
+
+              <!-- SELEÇÃO DE PRODUTO -->
+              <div class="row q-col-gutter-sm items-center">
+                <div class="col">
+                  <q-input
+                    outlined
+                    v-model="buscaProduto"
+                    label="Buscar Produto..."
+                    dense
+                    class="q-mb-xs"
+                  >
+                    <template v-slot:append>
+                      <q-icon name="search" />
+                    </template>
+                  </q-input>
+
+                  <q-list bordered separator v-if="produtosFiltrados.length">
+                    <q-item
+                      clickable
+                      v-ripple
+                      v-for="produto in produtosFiltrados"
+                      :key="produto.id"
+                      @click="adicionarItem(produto)"
+                    >
+                      <q-item-section>{{ produto.nome }}</q-item-section>
+                      <q-item-section side>
+                        R$ {{ produto.preco.toFixed(2) }}
+                      </q-item-section>
+                    </q-item>
+                  </q-list>
+                </div>
+
+                <div class="col-auto">
+                  <q-btn round dense color="primary" icon="add" @click="abrirModalItemAvulso">
+                    <q-tooltip>Adicionar Item Avulso</q-tooltip>
+                  </q-btn>
+                </div>
+              </div>
+
+              <!-- ITENS DO PEDIDO -->
+              <q-card flat bordered>
+                <q-card-section class="flex justify-between items-center q-py-sm">
+                  <div class="text-subtitle1">Itens do Pedido</div>
+                  <div class="text-weight-bold">
+                    Total: R$ {{ totalPedido.toFixed(2) }}
+                  </div>
+                </q-card-section>
+
+                <q-separator />
+
+                <q-list separator>
+                  <q-item v-if="pedidoAtual.itens.length === 0">
+                    <q-item-section class="text-grey text-center">
+                      Nenhum item adicionado
+                    </q-item-section>
+                  </q-item>
+
+                  <q-item v-for="(item, index) in pedidoAtual.itens" :key="index">
+                    <q-item-section>
+                      <q-item-label>{{ item.nome_produto_congelado }}</q-item-label>
+                      <q-item-label caption>
+                        R$ {{ (item.preco_unitario_congelado * item.quantidade).toFixed(2) }}
+                      </q-item-label>
+                    </q-item-section>
+
+                    <q-item-section side>
+                      <div class="flex items-center q-gutter-xs">
+                        <q-btn round dense flat icon="remove" @click="decrementarItem(item, index)" />
+                        <span class="text-body1 text-weight-bold">{{ item.quantidade }}</span>
+                        <q-btn round dense flat icon="add" @click="incrementarItem(item)" />
+                      </div>
+                    </q-item-section>
+
+                    <q-item-section side>
+                      <q-btn
+                        round
+                        dense
+                        flat
+                        color="negative"
+                        icon="close"
+                        @click="removerItem(index)"
+                      />
+                    </q-item-section>
+                  </q-item>
+                </q-list>
+              </q-card>
+
+              <q-input
+                v-model="pedidoAtual.observacoes"
+                outlined
+                type="textarea"
+                label="Observações"
+                dense
               />
-            </q-item-section>
-          </q-item>
-        </q-list>
-      </q-card>
 
-      <q-input
-        v-model="pedidoAtual.observacoes"
-        outlined
-        type="textarea"
-        label="Observações"
-        dense
-      />
+              <q-btn-toggle
+                v-model="pedidoAtual.metodo_pagamento"
+                spread
+                no-caps
+                :toggle-color="pedidoAtual.metodo_pagamento === 'Pago' ? 'positive' : 'warning'"
+                color="white"
+                text-color="black"
+                :options="[
+                  {
+                    label: 'Não Pago',
+                    value: 'Não Pago',
+                    disable: pedidoAtual.cliente && pedidoAtual.cliente.tipo === 'AVULSO',
+                  },
+                  { label: 'Pago', value: 'Pago' },
+                ]"
+              />
 
-      <q-btn-toggle
-        v-model="pedidoAtual.metodo_pagamento"
-        spread
+              <q-select
+                v-if="pedidoAtual.metodo_pagamento === 'Pago'"
+                outlined
+                v-model="pedidoAtual.forma_pagamento_venda"
+                :options="['Dinheiro', 'PIX', 'Cartão']"
+                label="Forma de Pagamento (Opcional)"
+                dense
+                emit-value
+                map-options
+                clearable
+              />
+
+              <q-btn
+                type="submit"
+                color="positive"
+                size="lg"
+                class="full-width"
+                :label="lancamentoEmEdicao ? 'Salvar Alterações' : 'Lançar no Caderno'"
+                icon="check_circle"
+              />
+            </q-form>
+          </div>
+        </template>
+
+        <template v-slot:after>
+          <div class="q-pa-md">
+            <div
+              v-if="!lancamentosDoDia || lancamentosDoDia.length === 0"
+              class="text-center text-grey q-mt-xl"
+            >
+              <q-icon name="inbox" size="xl" />
+              <p>Nenhum lançamento para esta data.</p>
+            </div>
+
+            <div v-else>
+              <q-card
+                v-for="lancamento in pedidosOrdenados"
+                :key="lancamento.id"
+                flat
+                bordered
+                class="q-mb-sm"
+                :class="statusClasses(lancamento)"
+              >
+                <!-- Status bar (faixa à esquerda) -->
+                <div class="status-bar"></div>
+                <!-- Cabeçalho do card (duas colunas) -->
+                <q-card-section class="row items-start no-wrap justify-between q-gutter-sm">
+                  <!-- Coluna ESQUERDA -->
+                  <div class="col">
+                    <div class="text-weight-bold client-name">
+                      {{ lancamento.cliente_nome }}
+                      <span
+                        v-if="lancamento.nome_funcionario_empresa"
+                        class="text-caption text-weight-regular"
+                      >
+                        ({{ lancamento.nome_funcionario_empresa }})
+                      </span>
+                    </div>
+                    <q-chip
+                      v-if="lancamento.estornado"
+                      dense size="sm"
+                      outline color="grey-7" text-color="grey-9"
+                      icon="block" label="ESTORNADO"
+                    />
+
+                    <div class="text-h6 text-primary q-mt-xs amount">
+                      R$ {{ lancamento.valor.toFixed(2) }}
+                    </div>
+                  </div>
+
+                  <!-- Coluna DIREITA: ações -->
+                  <div class="col-auto flex items-center q-gutter-sm">
+                    <!-- Status de preparo -->
+                    <q-badge
+                      :color="lancamento.status_preparo === 'PENDENTE' ? 'orange' : 'positive'"
+                      class="q-pa-sm cursor-pointer"
+                      @click="!lancamento.estornado && alternarStatusPreparo(lancamento)"
+                    >
+                      {{ lancamento.status_preparo }}
+                    </q-badge>
+
+                    <!-- Toggle Pago/Não Pago -->
+                    <q-toggle
+                      :model-value="lancamento.metodo_pagamento === 'Pago'"
+                      :color="(lancamento.metodo_pagamento === 'Pago') ? 'positive' : 'negative'"
+                      keep-color
+                      :label="!isMobile ? ((lancamento.metodo_pagamento === 'Pago') ? 'Pago' : 'Não Pago') : null"
+                      size="md"
+                      checked-icon="check"
+                      unchecked-icon="close"
+                      :disable="lancamento.estornado"
+                      @update:model-value="(v) => setStatusPagamento(lancamento, v)"
+                    />
+
+                    <!-- Forma de pagamento (apenas quando Pago) -->
+                    <q-btn
+                      v-if="lancamento.metodo_pagamento === 'Pago' && !lancamento.estornado"
+                      flat
+                      round
+                      dense
+                      icon="payment"
+                    >
+                      <q-tooltip>Alterar Forma de Pagamento</q-tooltip>
+                      <q-menu auto-close anchor="bottom middle" self="top middle">
+                        <q-btn-group flat>
+                          <q-btn
+                            flat dense label="Dinheiro"
+                            @click="atualizarFormaPagamento(lancamento, 'Dinheiro')"
+                            :class="{ 'bg-primary text-white': lancamento.forma_pagamento === 'Dinheiro' }"
+                          />
+                          <q-btn
+                            flat dense label="PIX"
+                            @click="atualizarFormaPagamento(lancamento, 'PIX')"
+                            :class="{ 'bg-primary text-white': lancamento.forma_pagamento === 'PIX' }"
+                          />
+                          <q-btn
+                            flat dense label="Cartão"
+                            @click="atualizarFormaPagamento(lancamento, 'Cartão')"
+                            :class="{ 'bg-primary text-white': lancamento.forma_pagamento === 'Cartão' }"
+                          />
+                          <q-btn
+                            flat
+                            dense
+                            icon="backspace"
+                            @click="atualizarFormaPagamento(lancamento, null)"
+                          >
+                            <q-tooltip>Limpar</q-tooltip>
+                          </q-btn>
+                        </q-btn-group>
+                      </q-menu>
+                    </q-btn>
+
+                    <!-- Botão “mais” -->
+                    <q-btn flat round dense icon="more_vert" :disable="lancamento.estornado">
+                      <q-menu auto-close>
+                        <q-list style="min-width: 140px">
+                          <q-item clickable @click="iniciarEdicaoLancamento(lancamento)">
+                            <q-item-section avatar>
+                              <q-icon name="edit" />
+                            </q-item-section>
+                            <q-item-section>Editar</q-item-section>
+                          </q-item>
+
+                          <q-item clickable @click="imprimirComprovante(lancamento)">
+                            <q-item-section avatar>
+                              <q-icon name="print" />
+                            </q-item-section>
+                            <q-item-section>Imprimir</q-item-section>
+                          </q-item>
+
+                          <q-separator />
+
+                          <q-item
+                            clickable
+                            class="text-negative"
+                            @click="estornarLancamento(lancamento)"
+                          >
+                            <q-item-section avatar>
+                              <q-icon name="delete" />
+                            </q-item-section>
+                            <q-item-section>Estornar</q-item-section>
+                          </q-item>
+                        </q-list>
+                      </q-menu>
+                    </q-btn>
+                  </div>
+                </q-card-section>
+
+                <!-- Itens -->
+                <q-card-section v-if="lancamento.itens.length > 0" class="q-pt-none">
+                  <q-list dense padding class="q-ml-md">
+                    <q-item v-for="item in lancamento.itens" :key="item.id" class="q-pa-none">
+                      <q-item-section class="text-grey-8 item-text">
+                        - {{ item.quantidade }}x {{ item.nome_produto_congelado }}
+                      </q-item-section>
+                    </q-item>
+                  </q-list>
+                </q-card-section>
+
+                <!-- Observações -->
+                <q-card-section v-if="lancamento.observacoes" class="q-pt-none">
+                  <q-banner dense class="bg-amber-2 text-dark q-mt-sm">
+                    <template v-slot:avatar>
+                      <q-icon name="info" />
+                    </template>
+                    {{ lancamento.observacoes }}
+                  </q-banner>
+                </q-card-section>
+              </q-card>
+
+              <!-- RESUMO DIÁRIO -->
+              <q-card flat bordered class="q-mt-lg">
+                <q-card-section horizontal>
+                  <q-card-section class="col">
+                    <div>Total de Vendas</div>
+                    <div class="text-h6 text-weight-bold">
+                      <span v-if="resumoVisivel">{{ resumoDiario.totalVendas }}</span>
+                      <span v-else>••••</span>
+                    </div>
+                  </q-card-section>
+                  <q-separator vertical />
+                  <q-card-section class="col">
+                    <div>Faturamento do Dia</div>
+                    <div class="text-h6 text-weight-bold text-positive">
+                      <span v-if="resumoVisivel">
+                        R$ {{ resumoDiario.faturamento.toFixed(2) }}
+                      </span>
+                      <span v-else>R$ ••••</span>
+                    </div>
+                  </q-card-section>
+                  <q-card-actions>
+                    <q-btn
+                      flat
+                      round
+                      :icon="resumoVisivel ? 'visibility_off' : 'visibility'"
+                      @click="revelarResumo"
+                    />
+                  </q-card-actions>
+                </q-card-section>
+              </q-card>
+            </div>
+          </div>
+        </template>
+      </q-splitter>
+    </div>
+
+    <!-- Mobile: Abas -->
+    <div v-else>
+      <q-tabs
+        v-model="abaMobile"
+        class="text-dark bg-white q-mb-sm"
+        active-color="primary"
+        indicator-color="primary"
         no-caps
-        :toggle-color="pedidoAtual.metodo_pagamento === 'Pago' ? 'positive' : 'warning'"
-        color="white"
-        text-color="black"
-        :options="[
-          {
-            label: 'Não Pago',
-            value: 'Não Pago',
-            disable: pedidoAtual.cliente && pedidoAtual.cliente.tipo === 'AVULSO',
-          },
-          { label: 'Pago', value: 'Pago' },
-        ]"
-      />
+        narrow-indicator
+      >
+        <q-tab name="lista" label="Pedidos" icon="list" />
+        <q-tab name="form" label="Novo" icon="add_circle" />
+      </q-tabs>
 
-      <q-select
-        v-if="pedidoAtual.metodo_pagamento === 'Pago'"
-        outlined
-        v-model="pedidoAtual.forma_pagamento_venda"
-        :options="['Dinheiro', 'PIX', 'Cartão']"
-        label="Forma de Pagamento (Opcional)"
-        dense
-        emit-value
-        map-options
-        clearable
-      />
+      <q-tab-panels
+        v-model="abaMobile"
+        animated
+        transition-prev="slide-right"
+        transition-next="slide-left"
+        class="q-pa-none"
+      >
+        <!-- Painel: Lista -->
+        <q-tab-panel name="lista" class="q-pa-none">
+          <div class="q-pa-sm">
+            <div
+              v-if="!lancamentosDoDia || lancamentosDoDia.length === 0"
+              class="text-center text-grey q-mt-xl"
+            >
+              <q-icon name="inbox" size="xl" />
+              <p>Nenhum lançamento para esta data.</p>
+            </div>
 
-      <q-btn
-        type="submit"
-        color="positive"
-        size="lg"
-        class="full-width"
-        :label="lancamentoEmEdicao ? 'Salvar Alterações' : 'Lançar no Caderno'"
-        icon="check_circle"
-      />
-    </q-form>
-  </div>
-    </q-tab-panel>
-  </q-tab-panels>
-</div>
+            <div v-else>
+              <q-card
+                v-for="lancamento in pedidosOrdenados"
+                :key="lancamento.id"
+                flat
+                bordered
+                class="q-mb-xs"
+                :class="statusClasses(lancamento)"
+              >
+                <!-- Status bar (faixa à esquerda) -->
+                <div class="status-bar"></div>
+                <q-card-section>
+                  <div class="flex items-start justify-between">
+                    <div class="col">
+                      <div class="text-weight-bold client-name">
+                        {{ lancamento.cliente_nome }}
+                        <span
+                          v-if="lancamento.nome_funcionario_empresa"
+                          class="text-caption text-weight-regular"
+                        >
+                          ({{ lancamento.nome_funcionario_empresa }})
+                        </span>
+                      </div>
+                      <q-chip
+                        v-if="lancamento.estornado"
+                        dense size="sm"
+                        outline color="grey-7" text-color="grey-9"
+                        icon="block" label="ESTORNADO"
+                      />
+
+                      <div class="text-h6 text-primary text-weight-bolder amount">
+                        R$ {{ lancamento.valor.toFixed(2) }}
+                      </div>
+                    </div>
+
+                    <div class="col-auto flex items-center q-gutter-sm">
+                      <q-badge
+                        :color="lancamento.status_preparo === 'PENDENTE' ? 'orange' : 'positive'"
+                        class="q-pa-sm cursor-pointer"
+                        @click="!lancamento.estornado && alternarStatusPreparo(lancamento)"
+                      >
+                        {{ lancamento.status_preparo }}
+                      </q-badge>
+
+                      <q-badge
+                        :color="lancamento.metodo_pagamento === 'Não Pago' ? 'negative' : 'positive'"
+                        class="q-pa-sm cursor-pointer"
+                        @click="!lancamento.estornado && alternarStatusPagamento(lancamento)"
+                      >
+                        {{ lancamento.metodo_pagamento }}
+                        <span
+                          v-if="lancamento.metodo_pagamento === 'Pago' && lancamento.forma_pagamento"
+                          class="q-ml-xs text-caption opacity-80"
+                        >
+                          ({{ lancamento.forma_pagamento }})
+                        </span>
+                      </q-badge>
+
+                      <q-btn
+                        v-if="lancamento.metodo_pagamento === 'Pago' && !lancamento.estornado"
+                        flat
+                        round
+                        dense
+                        icon="payment"
+                      >
+                        <q-tooltip>Alterar Forma de Pagamento</q-tooltip>
+                        <q-menu auto-close anchor="bottom middle" self="top middle">
+                          <q-btn-group flat>
+                            <q-btn
+                              flat
+                              label="Dinheiro"
+                              dense
+                              @click="atualizarFormaPagamento(lancamento, 'Dinheiro')"
+                              :class="{ 'bg-primary text-white': lancamento.forma_pagamento === 'Dinheiro' }"
+                            />
+                            <q-btn
+                              flat
+                              label="PIX"
+                              dense
+                              @click="atualizarFormaPagamento(lancamento, 'PIX')"
+                              :class="{ 'bg-primary text-white': lancamento.forma_pagamento === 'PIX' }"
+                            />
+                            <q-btn
+                              flat
+                              label="Cartão"
+                              dense
+                              @click="atualizarFormaPagamento(lancamento, 'Cartão')"
+                              :class="{ 'bg-primary text-white': lancamento.forma_pagamento === 'Cartão' }"
+                            />
+                            <q-btn flat dense icon="backspace" @click="atualizarFormaPagamento(lancamento, null)">
+                              <q-tooltip>Limpar</q-tooltip>
+                            </q-btn>
+                          </q-btn-group>
+                        </q-menu>
+                      </q-btn>
+
+                      <!-- Botão “mais” com menu -->
+                      <q-btn flat round dense icon="more_vert" :disable="lancamento.estornado">
+                        <q-menu auto-close>
+                          <q-list style="min-width: 140px">
+                            <q-item clickable @click="iniciarEdicaoLancamento(lancamento)">
+                              <q-item-section avatar>
+                                <q-icon name="edit" />
+                              </q-item-section>
+                              <q-item-section>Editar</q-item-section>
+                            </q-item>
+
+                            <q-item clickable @click="imprimirComprovante(lancamento)">
+                              <q-item-section avatar>
+                                <q-icon name="print" />
+                              </q-item-section>
+                              <q-item-section>Imprimir</q-item-section>
+                            </q-item>
+
+                            <q-separator />
+
+                            <q-item clickable class="text-negative" @click="estornarLancamento(lancamento)">
+                              <q-item-section avatar>
+                                <q-icon name="delete" />
+                              </q-item-section>
+                              <q-item-section>Estornar</q-item-section>
+                            </q-item>
+                          </q-list>
+                        </q-menu>
+                      </q-btn>
+                    </div>
+                  </div>
+
+                  <q-list dense padding class="q-ml-md" v-if="lancamento.itens.length > 0">
+                    <q-item v-for="item in lancamento.itens" :key="item.id" class="q-pa-none">
+                      <q-item-section class="text-grey-8 item-text">
+                        - {{ item.quantidade }}x {{ item.nome_produto_congelado }}
+                      </q-item-section>
+                    </q-item>
+                  </q-list>
+
+                  <q-banner dense class="bg-amber-2 text-dark q-mt-sm" v-if="lancamento.observacoes">
+                    <template v-slot:avatar>
+                      <q-icon name="info" />
+                    </template>
+                    {{ lancamento.observacoes }}
+                  </q-banner>
+                </q-card-section>
+              </q-card>
+
+              <!-- RESUMO DIÁRIO -->
+              <q-card flat bordered class="q-mt-md">
+                <q-card-section horizontal>
+                  <q-card-section class="col">
+                    <div>Total de Vendas</div>
+                    <div class="text-h6 text-weight-bold">
+                      <span v-if="resumoVisivel">{{ resumoDiario.totalVendas }}</span>
+                      <span v-else>••••</span>
+                    </div>
+                  </q-card-section>
+                  <q-separator vertical />
+                  <q-card-section class="col">
+                    <div>Faturamento do Dia</div>
+                    <div class="text-h6 text-weight-bold text-positive">
+                      <span v-if="resumoVisivel">
+                        R$ {{ resumoDiario.faturamento.toFixed(2) }}
+                      </span>
+                      <span v-else>R$ ••••</span>
+                    </div>
+                  </q-card-section>
+                  <q-card-actions>
+                    <q-btn
+                      flat
+                      round
+                      :icon="resumoVisivel ? 'visibility_off' : 'visibility'"
+                      @click="revelarResumo"
+                    />
+                  </q-card-actions>
+                </q-card-section>
+              </q-card>
+            </div>
+          </div>
+        </q-tab-panel>
+
+        <!-- Painel: Form -->
+        <q-tab-panel name="form" class="q-pa-none">
+          <div class="q-pa-sm">
+            <div class="text-subtitle1 q-mb-sm">
+              {{ lancamentoEmEdicao ? 'Editando Lançamento' : 'Novo Lançamento' }}
+            </div>
+
+            <q-form @submit.prevent="lancarPedido" class="q-gutter-md">
+              <div v-if="!pedidoAtual.cliente">
+                <q-input
+                  outlined
+                  v-model="buscaCliente"
+                  label="Buscar Cliente..."
+                  dense
+                  class="q-mb-xs"
+                >
+                  <template v-slot:append>
+                    <q-icon name="search" />
+                  </template>
+                </q-input>
+
+                <q-list bordered separator v-if="clientesFiltrados.length">
+                  <q-item
+                    clickable
+                    v-ripple
+                    v-for="cliente in clientesFiltrados"
+                    :key="cliente.id"
+                    @click="selecionarCliente(cliente)"
+                  >
+                    <q-item-section>{{ cliente.nome }}</q-item-section>
+                  </q-item>
+                </q-list>
+
+                <q-btn
+                  outline
+                  color="primary"
+                  @click="selecionarClienteAvulso"
+                  label="Venda Avulsa"
+                  class="full-width q-mt-sm"
+                />
+              </div>
+
+              <div v-else>
+                <q-chip
+                  removable
+                  @remove="removerCliente"
+                  color="primary"
+                  text-color="white"
+                  icon="person"
+                  :label="pedidoAtual.cliente.nome"
+                />
+              </div>
+
+              <q-select
+                v-if="pedidoAtual.cliente && pedidoAtual.cliente.tipo === 'EMPRESA'"
+                v-model="pedidoAtual.nome_funcionario"
+                label="Nome do Funcionário"
+                outlined
+                dense
+                use-input
+                hide-selected
+                fill-input
+                input-debounce="0"
+                :options="funcionariosFiltrados"
+                @filter="filterFn"
+                :rules="[(val) => !!val || 'Campo obrigatório']"
+              >
+                <template v-slot:no-option>
+                  <q-item>
+                    <q-item-section class="text-grey">
+                      Nenhum funcionário encontrado. Digite para adicionar.
+                    </q-item-section>
+                  </q-item>
+                </template>
+              </q-select>
+
+              <div class="row q-col-gutter-sm items-center">
+                <div class="col">
+                  <q-input
+                    outlined
+                    v-model="buscaProduto"
+                    label="Buscar Produto..."
+                    dense
+                    class="q-mb-xs"
+                  >
+                    <template v-slot:append>
+                      <q-icon name="search" />
+                    </template>
+                  </q-input>
+
+                  <q-list bordered separator v-if="produtosFiltrados.length">
+                    <q-item
+                      clickable
+                      v-ripple
+                      v-for="produto in produtosFiltrados"
+                      :key="produto.id"
+                      @click="adicionarItem(produto)"
+                    >
+                      <q-item-section>{{ produto.nome }}</q-item-section>
+                      <q-item-section side>
+                        R$ {{ produto.preco.toFixed(2) }}
+                      </q-item-section>
+                    </q-item>
+                  </q-list>
+                </div>
+
+                <div class="col-auto">
+                  <q-btn round dense color="primary" icon="add" @click="abrirModalItemAvulso">
+                    <q-tooltip>Adicionar Item Avulso</q-tooltip>
+                  </q-btn>
+                </div>
+              </div>
+
+              <q-card flat bordered>
+                <q-card-section class="flex justify-between items-center q-py-sm">
+                  <div class="text-subtitle1">Itens do Pedido</div>
+                  <div class="text-weight-bold">
+                    Total: R$ {{ totalPedido.toFixed(2) }}
+                  </div>
+                </q-card-section>
+
+                <q-separator />
+
+                <q-list separator>
+                  <q-item v-if="pedidoAtual.itens.length === 0">
+                    <q-item-section class="text-grey text-center">
+                      Nenhum item adicionado
+                    </q-item-section>
+                  </q-item>
+
+                  <q-item v-for="(item, index) in pedidoAtual.itens" :key="index">
+                    <q-item-section>
+                      <q-item-label>{{ item.nome_produto_congelado }}</q-item-label>
+                      <q-item-label caption>
+                        R$ {{ (item.preco_unitario_congelado * item.quantidade).toFixed(2) }}
+                      </q-item-label>
+                    </q-item-section>
+
+                    <q-item-section side>
+                      <div class="flex items-center q-gutter-xs">
+                        <q-btn round dense flat icon="remove" @click="decrementarItem(item, index)" />
+                        <span class="text-body1 text-weight-bold">{{ item.quantidade }}</span>
+                        <q-btn round dense flat icon="add" @click="incrementarItem(item)" />
+                      </div>
+                    </q-item-section>
+
+                    <q-item-section side>
+                      <q-btn
+                        round
+                        dense
+                        flat
+                        color="negative"
+                        icon="close"
+                        @click="removerItem(index)"
+                      />
+                    </q-item-section>
+                  </q-item>
+                </q-list>
+              </q-card>
+
+              <q-input
+                v-model="pedidoAtual.observacoes"
+                outlined
+                type="textarea"
+                label="Observações"
+                dense
+              />
+
+              <q-btn-toggle
+                v-model="pedidoAtual.metodo_pagamento"
+                spread
+                no-caps
+                :toggle-color="pedidoAtual.metodo_pagamento === 'Pago' ? 'positive' : 'warning'"
+                color="white"
+                text-color="black"
+                :options="[
+                  {
+                    label: 'Não Pago',
+                    value: 'Não Pago',
+                    disable: pedidoAtual.cliente && pedidoAtual.cliente.tipo === 'AVULSO',
+                  },
+                  { label: 'Pago', value: 'Pago' },
+                ]"
+              />
+
+              <q-select
+                v-if="pedidoAtual.metodo_pagamento === 'Pago'"
+                outlined
+                v-model="pedidoAtual.forma_pagamento_venda"
+                :options="['Dinheiro', 'PIX', 'Cartão']"
+                label="Forma de Pagamento (Opcional)"
+                dense
+                emit-value
+                map-options
+                clearable
+              />
+
+              <q-btn
+                type="submit"
+                color="positive"
+                size="lg"
+                class="full-width"
+                :label="lancamentoEmEdicao ? 'Salvar Alterações' : 'Lançar no Caderno'"
+                icon="check_circle"
+              />
+            </q-form>
+          </div>
+        </q-tab-panel>
+      </q-tab-panels>
+    </div>
 
     <!-- MODAL ITEM AVULSO -->
     <q-dialog v-model="mostrarModalItemAvulso">
@@ -818,43 +906,59 @@
 </template>
 
 <script setup>
-import PinModal from '@/components/PinModal.vue'
-
+// Monta classes de status para o card (usado no desktop e no mobile)
+function statusClasses(l) {
+  return [
+    'card-status',
+    {
+      'is-void': l.estornado,
+      'is-pending': !l.estornado && l.status_preparo === 'PENDENTE',
+      'is-ready': !l.estornado && l.status_preparo !== 'PENDENTE',
+    },
+  ]
+}
 import { ref, computed, onMounted, watch } from 'vue'
 import { useQuasar } from 'quasar'
-import { useDataStore } from '@/stores/dataStore.js'
-
 const $q = useQuasar()
 const isMobile = computed(() => $q.screen.lt.md)
+
+import { useDataStore } from '@/stores/dataStore.js'
+import PinModal from '@/components/PinModal.vue'
+import { db } from '@/services/databaseService.js'
+import { DADOS_RESTAURANTE } from '@/config.js'
+
 const abaMobile = ref('lista')
 const dataStore = useDataStore()
-
 const splitterModel = ref(35)
 
 const clientesParaSelecao = computed(() => dataStore.clientesAtivos || [])
 const produtosParaSelecao = computed(() => dataStore.produtosAtivos || [])
-
 const lancamentosDoDia = computed(() => dataStore.transacoes || [])
 
-// Computed para ordenar os pedidos/lancamentos conforme solicitado
+// Ordenação: PENDENTE primeiro, depois PRONTO, por último ESTORNADO. Dentro de cada grupo, mais antigo primeiro.
 const pedidosOrdenados = computed(() => {
-  return [...lancamentosDoDia.value]
-    .sort((a, b) => {
-      // 1. PENDENTE antes de PRONTO (ou outro status)
-      const aPend = a.status_preparo === 'PENDENTE' ? 0 : 1
-      const bPend = b.status_preparo === 'PENDENTE' ? 0 : 1
-      if (aPend !== bPend) return aPend - bPend
+  return [...(lancamentosDoDia.value || [])].sort((a, b) => {
+    // 1) Estornados sempre por último
+    const aEst = a.estornado ? 1 : 0
+    const bEst = b.estornado ? 1 : 0
+    if (aEst !== bEst) return aEst - bEst // não estornado (0) vem antes de estornado (1)
 
-      // 2. Dentro dos PENDENTES: mais ANTIGO primeiro (created_at menor)
-      const dateA = new Date(a.created_at)
-      const dateB = new Date(b.created_at)
-      return dateA - dateB
-    })
+    // 2) Entre NÃO estornados: PENDENTE antes de PRONTO
+    const aPend = a.status_preparo === 'PENDENTE' ? 0 : 1
+    const bPend = b.status_preparo === 'PENDENTE' ? 0 : 1
+    if (aPend !== bPend) return aPend - bPend
+
+    // 3) Tie-break: mais antigo primeiro
+    const dateA = new Date(a.created_at)
+    const dateB = new Date(b.created_at)
+    return dateA - dateB
+  })
 })
 
 const hoje = new Date()
 hoje.setMinutes(hoje.getMinutes() - hoje.getTimezoneOffset())
 const dataSelecionada = ref(hoje.toISOString().slice(0, 10))
+
 const buscaCliente = ref('')
 const buscaProduto = ref('')
 const lancamentoEmEdicao = ref(null)
@@ -889,8 +993,12 @@ const dataExibicao = computed(() => {
   if (!dataSelecionada.value) return ''
   const data = new Date(dataSelecionada.value)
   data.setMinutes(data.getMinutes() + data.getTimezoneOffset())
-  const opcoes = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }
-  return new Intl.DateTimeFormat('pt-BR', opcoes).format(data)
+  return new Intl.DateTimeFormat('pt-BR', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(data)
 })
 
 const clientesFiltrados = computed(() => {
@@ -915,11 +1023,11 @@ const selecionarCliente = async (cliente) => {
 
   if (cliente.tipo === 'EMPRESA') {
     try {
-      const funcionarios = await db.funcionarios.where('cliente_id').equals(cliente.id).toArray();
-      funcionariosDaEmpresaSelecionada.value = funcionarios.map(f => f.nome);
+      const funcionarios = await db.funcionarios.where('cliente_id').equals(cliente.id).toArray()
+      funcionariosDaEmpresaSelecionada.value = funcionarios.map((f) => f.nome)
     } catch (error) {
-      console.error("Erro ao buscar funcionários:", error);
-      $q.notify({ type: 'negative', message: 'Falha ao carregar funcionários da empresa.' });
+      console.error('Erro ao buscar funcionários:', error)
+      $q.notify({ type: 'negative', message: 'Falha ao carregar funcionários da empresa.' })
     }
   }
 }
@@ -940,6 +1048,7 @@ const selecionarClienteAvulso = () => {
     $q.notify({ type: 'negative', message: 'Cliente Avulso não encontrado.' })
   }
 }
+
 const adicionarItem = (produto) => {
   if (produto.id && typeof produto.id === 'number') {
     const itemExistente = pedidoAtual.value.itens.find((i) => i.produto_id === produto.id)
@@ -957,26 +1066,17 @@ const adicionarItem = (produto) => {
   })
   buscaProduto.value = ''
 }
-const incrementarItem = (item) => {
-  item.quantidade++
-}
-const decrementarItem = (item, index) => {
-  if (item.quantidade > 1) {
-    item.quantidade--
-  } else {
-    removerItem(index)
-  }
-}
-const removerItem = (index) => {
-  pedidoAtual.value.itens.splice(index, 1)
-}
 
-const totalPedido = computed(() => {
-  return pedidoAtual.value.itens.reduce(
+const incrementarItem = (item) => { item.quantidade++ }
+const decrementarItem = (item, index) => { item.quantidade > 1 ? item.quantidade-- : removerItem(index) }
+const removerItem = (index) => { pedidoAtual.value.itens.splice(index, 1) }
+
+const totalPedido = computed(() =>
+  pedidoAtual.value.itens.reduce(
     (acc, item) => acc + item.preco_unitario_congelado * item.quantidade,
     0,
-  )
-})
+  ),
+)
 
 const carregarDadosIniciais = async () => {
   await dataStore.fetchClientes()
@@ -1023,13 +1123,16 @@ const iniciarEdicaoLancamento = async (lancamento) => {
 
   if (clienteParaEditar && clienteParaEditar.tipo === 'EMPRESA') {
     try {
-        const funcionarios = await db.funcionarios.where('cliente_id').equals(clienteParaEditar.id).toArray();
-        funcionariosDaEmpresaSelecionada.value = funcionarios.map(f => f.nome);
+      const funcionarios = await db.funcionarios
+        .where('cliente_id')
+        .equals(clienteParaEditar.id)
+        .toArray()
+      funcionariosDaEmpresaSelecionada.value = funcionarios.map((f) => f.nome)
     } catch (error) {
-        console.error("Erro ao buscar funcionários na edição:", error);
+      console.error('Erro ao buscar funcionários na edição:', error)
     }
   } else {
-      funcionariosDaEmpresaSelecionada.value = [];
+    funcionariosDaEmpresaSelecionada.value = []
   }
 
   pedidoAtual.value.cliente = clienteParaEditar
@@ -1053,21 +1156,14 @@ const estornarLancamento = (lancamento) => {
 }
 
 const executarAcaoPendente = () => {
-  if (acaoPendente.value) {
-    acaoPendente.value()
-  }
+  if (acaoPendente.value) acaoPendente.value()
   mostrarPinModal.value = false
   acaoPendente.value = null
 }
 
 const revelarResumo = () => {
-  if (resumoVisivel.value) {
-    resumoVisivel.value = false
-    return
-  }
-  acaoPendente.value = () => {
-    resumoVisivel.value = true
-  }
+  if (resumoVisivel.value) { resumoVisivel.value = false; return }
+  acaoPendente.value = () => { resumoVisivel.value = true }
   mostrarPinModal.value = true
 }
 
@@ -1081,6 +1177,22 @@ const alternarStatusPagamento = async (lancamento) => {
   }
   const novoStatus = lancamento.metodo_pagamento === 'Não Pago' ? 'Pago' : 'Não Pago'
   await dataStore.atualizarStatus(lancamento, { metodo_pagamento: novoStatus })
+}
+
+async function setStatusPagamento(lancamento, pago) {
+  if (lancamento.estornado) return
+  if (lancamento.cliente_nome === 'Cliente Avulso') {
+    $q.notify({
+      type: 'warning',
+      message: 'Não é possível alterar o status de pagamento para uma Venda Avulsa.',
+    })
+    return
+  }
+  const desejado = pago ? 'Pago' : 'Não Pago'
+  if (lancamento.metodo_pagamento === desejado) return
+
+  await alternarStatusPagamento(lancamento)
+  if (!pago) await atualizarFormaPagamento(lancamento, null)
 }
 
 const alternarStatusPreparo = async (lancamento) => {
@@ -1109,16 +1221,13 @@ const confirmarItemAvulso = () => {
 
 const filterFn = (val, update) => {
   if (val === '') {
-    update(() => {
-      funcionariosFiltrados.value = funcionariosDaEmpresaSelecionada.value
-    })
+    update(() => { funcionariosFiltrados.value = funcionariosDaEmpresaSelecionada.value })
     return
   }
-
   update(() => {
     const needle = val.toLowerCase()
     funcionariosFiltrados.value = funcionariosDaEmpresaSelecionada.value.filter(
-      v => v.toLowerCase().indexOf(needle) > -1
+      (v) => v.toLowerCase().indexOf(needle) > -1,
     )
   })
 }
@@ -1205,9 +1314,7 @@ const imprimirComprovante = (lancamento) => {
   doc.close()
   iframe.contentWindow.focus()
   iframe.contentWindow.print()
-  setTimeout(() => {
-    document.body.removeChild(iframe)
-  }, 1000)
+  setTimeout(() => { document.body.removeChild(iframe) }, 1000)
 }
 
 const imprimirCadernoDoDia = () => {
@@ -1218,6 +1325,7 @@ const imprimirCadernoDoDia = () => {
   const dataFormatadaParaPrint = new Date(dataSelecionada.value).toLocaleDateString('pt-BR', {
     timeZone: 'UTC',
   })
+
   const corpoTabela = lancamentosDoDia.value
     .filter((l) => !l.estornado)
     .map((lancamento) => {
@@ -1226,42 +1334,61 @@ const imprimirCadernoDoDia = () => {
         .join('')
       return `
         <tr>
-          <td>${lancamento.cliente_nome} ${lancamento.nome_funcionario_empresa ? '(' + lancamento.nome_funcionario_empresa + ')' : ''}</td>
+          <td>${lancamento.cliente_nome} ${
+            lancamento.nome_funcionario_empresa ? '(' + lancamento.nome_funcionario_empresa + ')' : ''
+          }</td>
           <td><ul>${itensHTML}</ul></td>
           <td>${lancamento.observacoes || ''}</td>
           <td>${lancamento.status_preparo}</td>
-          <td>${lancamento.metodo_pagamento} ${lancamento.forma_pagamento ? '(' + lancamento.forma_pagamento + ')' : ''}</td>
+          <td>${lancamento.metodo_pagamento} ${
+            lancamento.forma_pagamento ? '(' + lancamento.forma_pagamento + ')' : ''
+          }</td>
           <td>R$ ${lancamento.valor.toFixed(2)}</td>
         </tr>
       `
     })
     .join('')
+
   const resumoHTML = `
     <div class="resumo-print">
       <p><strong>Total de Vendas:</strong> ${resumoDiario.value.totalVendas}</p>
       <p><strong>Faturamento do Dia:</strong> R$ ${resumoDiario.value.faturamento.toFixed(2)}</p>
     </div>
   `
+
   const relatorioHTML = `
     <html>
       <head>
         <title>Caderno do Dia - ${dataFormatadaParaPrint}</title>
         <style>
-          body { font-family: sans-serif; } table { width: 100%; border-collapse: collapse; margin-top: 20px;}
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; } th { background-color: #f2f2f2; }
-          ul { margin: 0; padding-left: 15px; } .resumo-print { margin-top: 20px; text-align: right; font-size: 1.2em; }
+          body { font-family: sans-serif; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
+          th { background-color: #f2f2f2; }
+          ul { margin: 0; padding-left: 15px; }
+          .resumo-print { margin-top: 20px; text-align: right; font-size: 1.2em; }
         </style>
       </head>
       <body>
         <h1>Lançamentos do Dia: ${dataFormatadaParaPrint}</h1>
         <table>
-          <thead> <tr> <th>Cliente (Funcionário)</th> <th>Itens</th> <th>Observações</th> <th>Preparo</th> <th>Pagamento</th> <th>Total</th> </tr> </thead>
-          <tbody> ${corpoTabela} </tbody>
+          <thead>
+            <tr>
+              <th>Cliente (Funcionário)</th>
+              <th>Itens</th>
+              <th>Observações</th>
+              <th>Preparo</th>
+              <th>Pagamento</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>${corpoTabela}</tbody>
         </table>
         ${resumoHTML}
       </body>
     </html>
   `
+
   const iframe = document.createElement('iframe')
   iframe.style.position = 'absolute'
   iframe.style.width = '0'
@@ -1274,9 +1401,7 @@ const imprimirCadernoDoDia = () => {
   doc.close()
   iframe.contentWindow.focus()
   iframe.contentWindow.print()
-  setTimeout(() => {
-    document.body.removeChild(iframe)
-  }, 1000)
+  setTimeout(() => { document.body.removeChild(iframe) }, 1000)
 }
 
 watch(dataSelecionada, (novaData) => {
@@ -1284,27 +1409,60 @@ watch(dataSelecionada, (novaData) => {
   resumoVisivel.value = false
 })
 
-onMounted(() => {
-  carregarDadosIniciais()
-})
+onMounted(() => { carregarDadosIniciais() })
+
 </script>
 
 <style scoped>
+/* Card com faixa lateral e fundo por status */
+.card-status {
+  position: relative;
+  overflow: hidden;
+
+  /* Força o fundo configurável por estado (vence possíveis bg-* residuais) */
+  background-color: var(--status-bg, #fff) !important;
+  transition: background-color .15s ease;
+}
+
+/* Faixa lateral */
+.status-bar {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: var(--status-width, 4px);
+  background: var(--status-color, #bdbdbd);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Paleta por estado */
+.card-status.is-pending {         /* PENDENTE */
+  --status-color: #fb8c00;        /* faixa laranja */
+  --status-bg:    #FFF8E1;        /* fundo âmbar suave */
+}
+.card-status.is-ready {           /* PRONTO */
+  --status-color: #21ba45;        /* faixa verde */
+  --status-bg:    #ffffff;        /* fundo BRANCO */
+}
+.card-status.is-void {            /* ESTORNADO */
+  --status-color: #757575;        /* faixa cinza */
+  --status-width: 6px;            /* destaque */
+  --status-bg:    #F2F2F2;        /* fundo cinza claro */
+}
+
+/* Visual de cancelado: risca textos principais e reduz contraste */
+.card-status.is-void .client-name,
+.card-status.is-void .amount,
+.card-status.is-void .item-text {
+  text-decoration: line-through;
+  opacity: .55;
+}
+
+/* Números alinhados verticalmente nos valores */
+.amount { font-variant-numeric: tabular-nums; }
+
+/* Se já existia essa classe no seu CSS, pode manter */
 .estornado-style {
   text-decoration: line-through;
   opacity: 0.7;
-}
-.opacity-80 {
-  opacity: 0.8;
-}
-/* Toolbar do dia fica presa sob o header */
-.toolbar-dia {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: #fff;
-  padding-top: 4px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid rgba(0,0,0,0.06);
 }
 </style>

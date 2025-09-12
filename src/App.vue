@@ -1,36 +1,6 @@
 <template>
   <q-layout view="hHh lpR fFf">
-    <q-header elevated class="bg-primary text-white" height-hint="60">
-      <q-toolbar>
-        <!-- Logotipo do Restaurante (imagem completa) -->
-        <img
-          src="/logo-restaurante-completo.png"
-          class="logo-restaurante"
-          @click="$router.push('/caderno')"
-          style="cursor: pointer"
-        />
-
-        <q-space />
-
-        <q-tabs align="right">
-          <q-route-tab to="/caderno" label="Caderno" />
-          <q-route-tab to="/produtos" label="Produtos" />
-          <q-route-tab to="/clientes" label="Clientes" />
-          <q-route-tab to="/contas-receber" label="Contas a Receber" />
-          <q-route-tab to="/relatorios" label="Relatórios" />
-        </q-tabs>
-        <q-btn
-          flat
-          dense
-          icon="refresh"
-          :loading="atualizando"
-          @click="atualizarAgora"
-          class="q-ml-md"
-        >
-          <q-tooltip>Atualizar agora</q-tooltip>
-        </q-btn>
-      </q-toolbar>
-    </q-header>
+    <AppNav />
 
     <q-page-container>
       <router-view />
@@ -46,36 +16,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useDataStore } from '@/stores/dataStore.js'
-import { useQuasar } from 'quasar'
-import { onMounted } from 'vue'
-
-const dataStore = useDataStore()
-const $q = useQuasar()
-const atualizando = ref(false)
-
-async function atualizarAgora() {
-  if (atualizando.value) return
-  atualizando.value = true
-  try {
-    await Promise.all([
-      dataStore.fetchClientes(),
-      dataStore.fetchProdutos(),
-      dataStore.fetchTransacoesDoDia && dataStore.fetchTransacoesDoDia(new Date().toISOString().slice(0, 10))
-    ])
-    $q.notify({ type: 'positive', message: 'Atualizado' })
-  } catch (e) {
-    console.error(e)
-    $q.notify({ type: 'negative', message: 'Falha ao atualizar' })
-  } finally {
-    atualizando.value = false
-  }
-}
-
-onMounted(() => {
-  dataStore.initialize()
-})
+import AppNav from '@/components/AppNav.vue'
 </script>
 
 <style>
