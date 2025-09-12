@@ -1,44 +1,23 @@
 <template>
-  <div v-if="visible" class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal-content">
-      <h3>PIN de Autorização</h3>
-      <input
-        ref="pinInput"
-        type="password"
-        v-model="pin"
-        maxlength="4"
-        @keyup.enter="handleConfirm"
-      />
-      <p class="error-message">{{ errorMessage }}</p>
-      <div class="modal-actions">
-        <button @click="$emit('close')">Cancelar</button>
-        <button @click="handleConfirm">Confirmar</button>
-      </div>
-    </div>
-  </div>
+  <q-dialog v-model="isOpen">
+    <q-card style="min-width: 300px">
+      <q-card-section class="text-h6">PIN</q-card-section>
+      <q-card-actions align="right">
+        <q-btn flat label="Fechar" color="primary" @click="$emit('close')" />
+        <q-btn label="OK" color="primary" @click="$emit('success')" />
+      </q-card-actions>
+    </q-card>
+  </q-dialog>
 </template>
 
 <script setup>
-import { ref, watch, nextTick } from 'vue'
-
-const props = defineProps({
-  visible: Boolean,
+import { computed } from 'vue'
+const props = defineProps({ visible: { type: Boolean, default: false } })
+const isOpen = computed({
+  get: () => props.visible,
+  set: (v) => { if (!v) { /* emits close when user hides */ } }
 })
-const emit = defineEmits(['close', 'success'])
-
-const pin = ref('')
-const errorMessage = ref('')
-const pinInput = ref(null)
-
-const PIN_CORRETO = '1234' // Mantenha seu PIN aqui
-
-watch(
-  () => props.visible,
-  (newValue) => {
-    if (newValue) {
-      pin.value = ''
-      errorMessage.value = ''
-      nextTick(() => {
+</script>
         pinInput.value?.focus()
       })
     }
