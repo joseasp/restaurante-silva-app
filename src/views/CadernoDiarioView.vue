@@ -288,25 +288,17 @@
                   <!-- Coluna DIREITA: ações -->
                   <div class="col-auto flex items-center q-gutter-sm">
                     <!-- Status de preparo -->
-                    <q-badge
-                      :color="lancamento.status_preparo === 'PENDENTE' ? 'orange' : 'positive'"
-                      class="q-pa-sm cursor-pointer"
-                      @click="!lancamento.estornado && alternarStatusPreparo(lancamento)"
-                    >
-                      {{ lancamento.status_preparo }}
-                    </q-badge>
+                    <PreparationStatusChip
+                      :value="lancamento.status_preparo"
+                      :disabled="lancamento.estornado"
+                      @toggle="!lancamento.estornado && alternarStatusPreparo(lancamento)"
+                    />
 
-                    <!-- Toggle Pago/Não Pago -->
-                    <q-toggle
-                      :model-value="lancamento.metodo_pagamento === 'Pago'"
-                      :color="(lancamento.metodo_pagamento === 'Pago') ? 'positive' : 'negative'"
-                      keep-color
-                      :label="!isMobile ? ((lancamento.metodo_pagamento === 'Pago') ? 'Pago' : 'Não Pago') : null"
-                      size="md"
-                      checked-icon="check"
-                      unchecked-icon="close"
-                      :disable="lancamento.estornado"
-                      @update:model-value="(v) => setStatusPagamento(lancamento, v)"
+                    <PaymentStatusChip
+                      :value="lancamento.metodo_pagamento"
+                      :forma-pagamento="lancamento.forma_pagamento"
+                      :disabled="lancamento.estornado"
+                      @toggle="!lancamento.estornado && alternarStatusPagamento(lancamento)"
                     />
 
                     <!-- Forma de pagamento (apenas quando Pago) -->
@@ -509,27 +501,20 @@
                     </div>
 
                     <div class="col-auto flex items-center q-gutter-sm">
-                      <q-badge
-                        :color="lancamento.status_preparo === 'PENDENTE' ? 'orange' : 'positive'"
-                        class="q-pa-sm cursor-pointer"
-                        @click="!lancamento.estornado && alternarStatusPreparo(lancamento)"
-                      >
-                        {{ lancamento.status_preparo }}
-                      </q-badge>
 
-                      <q-badge
-                        :color="lancamento.metodo_pagamento === 'Não Pago' ? 'negative' : 'positive'"
-                        class="q-pa-sm cursor-pointer"
-                        @click="!lancamento.estornado && alternarStatusPagamento(lancamento)"
-                      >
-                        {{ lancamento.metodo_pagamento }}
-                        <span
-                          v-if="lancamento.metodo_pagamento === 'Pago' && lancamento.forma_pagamento"
-                          class="q-ml-xs text-caption opacity-80"
-                        >
-                          ({{ lancamento.forma_pagamento }})
-                        </span>
-                      </q-badge>
+
+                      <PreparationStatusChip
+                        :value="lancamento.status_preparo"
+                        :disabled="lancamento.estornado"
+                        @toggle="!lancamento.estornado && alternarStatusPreparo(lancamento)"
+                      />
+
+                      <PaymentStatusChip
+                        :value="lancamento.metodo_pagamento"
+                        :forma-pagamento="lancamento.forma_pagamento"
+                        :disabled="lancamento.estornado"
+                        @toggle="!lancamento.estornado && alternarStatusPagamento(lancamento)"
+                      />
 
                       <q-btn
                         v-if="lancamento.metodo_pagamento === 'Pago' && !lancamento.estornado"
@@ -918,6 +903,8 @@ function statusClasses(l) {
   ]
 }
 import { ref, computed, onMounted, watch } from 'vue'
+import PaymentStatusChip from '@/components/PaymentStatusChip.vue'
+import PreparationStatusChip from '@/components/PreparationStatusChip.vue'
 import { useQuasar } from 'quasar'
 const $q = useQuasar()
 const isMobile = computed(() => $q.screen.lt.md)

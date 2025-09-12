@@ -123,7 +123,7 @@ export const useDataStore = defineStore('data', () => {
   // console.log("Iniciando rotina de sincronização...");
     try {
       // Sincroniza em ordem de dependência
-      
+
       // 1. Clientes
       const clientesParaSync = await db.clientes.filter(c => !c.ultima_sincronizacao).toArray();
       if (clientesParaSync.length > 0) {
@@ -211,24 +211,24 @@ export const useDataStore = defineStore('data', () => {
   await restaurarTabela('transacoes', db.transacoes);
   await restaurarTabela('itens_transacao', db.itens_transacao);
   await restaurarTabela('funcionarios', db.funcionarios);
-  
+
   console.log(`Restauração da nuvem concluída. Sucesso: ${sucessoGeral}`);
   return sucessoGeral;
 }
 
   async function initialize() {
   console.log("Inicializando o Data Store...");
-  
+
   const contagemClientes = await db.clientes.count();
-  
+
   // Lógica crucial:
   // 1. Verifica se o banco local está vazio.
   if (contagemClientes === 0) {
     console.log("Banco local vazio detectado.");
-    
+
     // 2. Tenta restaurar da nuvem.
     const restauradoComSucesso = await restaurarBackupDaNuvem();
-    
+
     // 3. SOMENTE se a restauração falhar (ex: primeiro uso, sem internet),
     //    cria os dados padrão.
     if (!restauradoComSucesso) {
