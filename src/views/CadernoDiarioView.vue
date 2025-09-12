@@ -1037,18 +1037,21 @@ const selecionarClienteAvulso = () => {
 }
 
 const adicionarItem = (produto) => {
-  if (produto.id && typeof produto.id === 'number') {
-    const itemExistente = pedidoAtual.value.itens.find((i) => i.produto_id === produto.id)
+  const id = produto?.id ?? null
+
+  if (id) {
+    const itemExistente = pedidoAtual.value.itens.find((i) => i.produto_id === id)
     if (itemExistente) {
       itemExistente.quantidade++
       buscaProduto.value = ''
       return
     }
   }
+
   pedidoAtual.value.itens.push({
-    produto_id: typeof produto.id === 'number' ? produto.id : null,
+    produto_id: id, // pode ser string (UUID) ou null (item avulso)
     nome_produto_congelado: produto.nome,
-    preco_unitario_congelado: parseFloat(produto.preco),
+    preco_unitario_congelado: Number(produto.preco),
     quantidade: 1,
   })
   buscaProduto.value = ''

@@ -1,5 +1,3 @@
-<!-- src/views/ProdutosView.vue -->
-
 <template>
   <q-page padding>
     <q-banner v-if="!online" class="bg-red text-white q-mb-md">
@@ -8,13 +6,15 @@
     <q-banner v-if="erroCarregamento" class="bg-red text-white q-mb-md">
       {{ erroCarregamento }}
     </q-banner>
+
     <q-inner-loading :showing="loading">
       <q-spinner size="50px" color="primary" />
       <div>Carregando dados...</div>
     </q-inner-loading>
+
     <div class="text-h4 q-mb-md">Gestão de Produtos</div>
 
-    <!-- Seção para adicionar/editar produtos -->
+    <!-- Formulário -->
     <q-card class="q-mb-lg">
       <q-card-section>
         <div class="text-h6">
@@ -28,24 +28,7 @@
           @submit="produtoEmEdicao ? salvarEdicao() : salvarNovoProduto()"
           class="row q-col-gutter-md items-end"
         >
-          <div class="col-xs-12 col-sm-6">
-            <q-select
-              outlined
-              v-model="form.funcionario"
-              :options="opcoesFuncionarios"
-              use-input
-              fill-input
-              hide-selected
-              input-debounce="0"
-              label="Nome do Funcionário"
-              new-value-mode="add"
-              @new-value="onNewFuncionario"
-              clearable
-              dense
-              :rules="[]"
-            />
-          </div>
-          <div class="col-xs-12 col-sm-6">
+          <div class="col-xs-12 col-sm-8">
             <q-input
               outlined
               v-model="form.nome"
@@ -53,17 +36,19 @@
               :rules="[(val) => !!val || 'Campo obrigatório']"
             />
           </div>
+
           <div class="col-xs-12 col-sm-4">
             <q-input
               outlined
-              type="number"
-              step="0.01"
-              v-model.number="form.preco"
+              type="text"
+              v-model="precoTexto"
               label="Preço (R$)"
-              :rules="[(val) => val > 0 || 'Preço deve ser maior que zero']"
+              :rules="[(val) => normalizaPreco(val) > 0 || 'Preço deve ser maior que zero']"
+              hint="Use vírgula ou ponto"
             />
           </div>
-          <div class="col-xs-12 col-sm-2">
+
+          <div class="col-xs-12 col-sm-3">
             <q-btn
               v-if="!produtoEmEdicao"
               type="submit"
@@ -72,9 +57,10 @@
               class="full-width"
               size="lg"
               unelevated
+              @click="sincronizaPrecoNoForm"
             />
             <div v-else class="row q-gutter-sm">
-              <q-btn label="Salvar" type="submit" color="positive" class="col" unelevated />
+              <q-btn label="Salvar" type="submit" color="positive" class="col" unelevated @click="sincronizaPrecoNoForm" />
               <q-btn label="Cancelar" @click="cancelarEdicao" color="grey" class="col" flat />
             </div>
           </div>
@@ -82,15 +68,23 @@
       </q-card-section>
     </q-card>
 
-    <!-- Seção da lista de produtos -->
+    <!-- Lista + Ações -->
     <q-card>
-      <q-card-section class="flex justify-between items-center">
-        <div class="text-h6">Lista de Produtos</div>
-        <q-input outlined dense v-model="busca" placeholder="Buscar..." class="q-ml-md">
-          <template v-slot:append>
-            <q-icon name="search" />
-          </template>
-        </q-input>
+      <q-card-section class="row items-center q-col-gutter-md">
+        <div class="col">
+          <div class="text-h6">Lista de Produtos</div>
+        </div>
+        <div class="col-auto row items-center q-gutter-sm">
+          <q-btn dense flat icon="sync" label="Sincronizar agora" @click="sincronizarAgora" />
+        </div>
+        <div class="col-12 col-sm-auto">
+          <q-toggle v-model="mostrarInativos" label="Mostrar inativos" />
+        </div>
+        <div class="col-12 col-sm">
+          <q-input outlined dense v-model="busca" placeholder="Buscar...">
+            <template v-slot:append><q-icon name="search" /></template>
+          </q-input>
+        </div>
       </q-card-section>
 
       <q-separator />
@@ -103,18 +97,14 @@
         <q-item v-for="produto in produtosFiltrados" :key="produto.id">
           <q-item-section>
             <q-item-label>{{ produto.nome }}</q-item-label>
-            <q-item-label caption>R$ {{ produto.preco.toFixed(2) }}</q-item-label>
+            <q-item-label caption>{{ formatCurrency(produto.preco) }}</q-item-label>
+            <q-badge v-if="produto.ativo === false" color="grey" class="q-mt-xs">Inativo</q-badge>
           </q-item-section>
           <q-item-section side>
             <div class="row q-gutter-sm">
-              <q-btn round flat icon="edit" color="info" @click="iniciarEdicao(produto)" />
-              <q-btn
-                round
-                flat
-                icon="delete"
-                color="negative"
-                @click="confirmarExclusao(produto)"
-              />
+              <q-btn v-if="produto.ativo !== false" round flat icon="edit" color="info" @click="iniciarEdicao(produto)" />
+              <q-btn v-if="produto.ativo !== false" round flat icon="delete" color="negative" @click="confirmarExclusao(produto)" />
+              <q-btn v-else round flat icon="restore" color="positive" @click="reativar(produto)" />
             </div>
           </q-item-section>
         </q-item>
@@ -124,7 +114,7 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { useDataStore } from '@/stores/dataStore'
 import { storeToRefs } from 'pinia'
 import { useQuasar } from 'quasar'
@@ -133,61 +123,56 @@ const dataStore = useDataStore()
 const $q = useQuasar()
 const { loading, erroCarregamento, online } = storeToRefs(dataStore)
 
-onMounted(() => {
-  window.addEventListener('online', () => (dataStore.online = true))
-  window.addEventListener('offline', () => (dataStore.online = false))
-})
-onUnmounted(() => {
-  window.removeEventListener('online', () => (dataStore.online = true))
-  window.removeEventListener('offline', () => (dataStore.online = false))
-})
-
 const formRef = ref(null)
-const produtos = computed(() => dataStore.produtosAtivos)
+const mostrarInativos = ref(false)
 
-// Lista de funcionários cadastrados (apenas sugestões, texto livre)
-const opcoesFuncionarios = ref([
-  'Ana',
-  'Carlos',
-  'João'
-])
+const produtosBase = computed(() => (mostrarInativos.value ? dataStore.produtos : dataStore.produtosAtivos))
 
-const getInitialForm = () => ({ funcionario: '', nome: '', preco: null })
-
+const getInitialForm = () => ({ id: null, nome: '', preco: null })
 const form = ref(getInitialForm())
-// Aceita qualquer valor digitado no campo funcionário
-function onNewFuncionario(val, done) {
-  // Aceita qualquer valor digitado
-  done(val)
-}
+const precoTexto = ref('') // aceita vírgula ou ponto
+
 const produtoEmEdicao = ref(null)
 const busca = ref('')
 
+const formatCurrency = (v) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0)
+
+const normalizaPreco = (t) => {
+  if (t === null || t === undefined) return 0
+  if (typeof t !== 'string') return Number(t) || 0
+  return Number(t.replace(',', '.')) || 0
+}
+const sincronizaPrecoNoForm = () => {
+  form.value.preco = normalizaPreco(precoTexto.value)
+}
+
 const produtosFiltrados = computed(() => {
-  if (!busca.value) {
-    return produtos.value
-  }
-  return produtos.value.filter((p) => p.nome.toLowerCase().includes(busca.value.toLowerCase()))
+  const termo = (busca.value || '').toLowerCase()
+  const base = produtosBase.value
+  const filtrada = termo ? base.filter((p) => p.nome.toLowerCase().includes(termo)) : base
+  return [...filtrada].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
 })
 
 function iniciarEdicao(produto) {
   window.scrollTo(0, 0)
   produtoEmEdicao.value = { ...produto }
-  form.value = { ...produto }
+  form.value = { id: produto.id, nome: produto.nome, preco: produto.preco }
+  precoTexto.value = String(produto.preco).replace('.', ',')
 }
 
 function cancelarEdicao() {
   produtoEmEdicao.value = null
   form.value = getInitialForm()
+  precoTexto.value = ''
   nextTick(() => {
-    if (formRef.value) {
-      formRef.value.resetValidation()
-    }
+    if (formRef.value) formRef.value.resetValidation()
   })
 }
 
 async function salvarNovoProduto() {
   try {
+    sincronizaPrecoNoForm()
     await dataStore.adicionarProduto(form.value)
     $q.notify({ type: 'positive', message: 'Produto adicionado com sucesso!' })
     cancelarEdicao()
@@ -198,6 +183,7 @@ async function salvarNovoProduto() {
 
 async function salvarEdicao() {
   try {
+    sincronizaPrecoNoForm()
     await dataStore.atualizarProduto(form.value)
     $q.notify({ type: 'positive', message: 'Produto atualizado com sucesso!' })
     cancelarEdicao()
@@ -214,11 +200,33 @@ function confirmarExclusao(produto) {
     persistent: true,
   }).onOk(async () => {
     try {
-      await dataStore.excluirProduto(produto)
+      await dataStore.excluirProduto(produto.id)
       $q.notify({ type: 'info', message: 'Produto excluído.' })
     } catch (error) {
       $q.notify({ type: 'negative', message: error.message })
     }
   })
+}
+
+async function reativar(produto) {
+  try {
+    await dataStore.reativarProduto(produto.id)
+    $q.notify({ type: 'positive', message: 'Produto reativado!' })
+  } catch (error) {
+    $q.notify({ type: 'negative', message: error.message })
+  }
+}
+
+// Botão único: sincroniza (envia pendentes -> baixa/mescla)
+async function sincronizarAgora() {
+  try {
+    const qtd = await dataStore.sincronizarProdutosAgora()
+    $q.notify({
+      type: 'positive',
+      message: `Sincronização concluída. ${qtd ? `Enviados ${qtd} pendentes. ` : ''}`,
+    })
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e.message || 'Falha na sincronização agora.' })
+  }
 }
 </script>
