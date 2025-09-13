@@ -1,239 +1,93 @@
-// src/stores/dataStore.js
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { liveQuery } from 'dexie'
 import { db } from '@/services/databaseService.js'
 import { supabase } from '@/services/supabaseClient.js'
 import { v4 as uuidv4 } from 'uuid'
-import { setupRealtimeProducts } from '@/composables/useRealtimeProducts'
 
-// Util: aceita vírgula em preço
-function toNumber(val) {
-  if (typeof val === 'string') return Number(val.replace(',', '.'))
-  return Number(val)
+// Um único canal global
+let produtosChannel = null
+
+// Debug opcional
+if (typeof window !== 'undefined') {
+  window.__sb = supabase
+  const host =
+    (supabase?.restUrl && new URL(supabase.restUrl).host) ||
+    (supabase?.supabaseUrl && new URL(supabase.supabaseUrl).host) ||
+    ''
+  console.log('[RT] Supabase URL:', host)
 }
 
-// Guardas para evitar múltiplas assinaturas
-let produtosRealtimeChannel = null
-let produtosSubscription = null
-
 export const useDataStore = defineStore('data', () => {
-  // Estado
+  // STATE
   const todosOsClientes = ref([])
   const produtos = ref([])
   const transacoes = ref([])
 
   const loading = ref(false)
   const erroCarregamento = ref(null)
-  const online = ref(navigator.onLine)
+  const online = ref(typeof navigator !== 'undefined' ? navigator.onLine : true)
 
-  // Getters
+  // GETTERS
   const clientesAtivos = computed(() => todosOsClientes.value.filter((c) => c.ativo !== false))
   const produtosAtivos = computed(() => produtos.value.filter((p) => p.ativo !== false))
 
-  // Carregamentos locais
+  // UTILS
+  function normalizeNome(s) {
+    return String(s || '').trim().replace(/\s+/g, ' ')
+  }
+  function keyFromNome(s) {
+    return normalizeNome(s).toLowerCase()
+  }
+  function toNumber(val) {
+    if (typeof val === 'string') return Number(val.replace(',', '.'))
+    return Number(val)
+  }
+
+  // Reconcilia id local <-> id oficial da nuvem após upsert/select
+  async function reconciliarLocalComServidor(localId, serverRow) {
+    const serverId = serverRow?.id
+    if (!serverId) return
+    if (localId && localId !== serverId) {
+      const local = await db.produtos.get(localId)
+      if (local) {
+        const { id, ...rest } = local
+        await db.produtos.delete(localId)
+        await db.produtos.put({ ...rest, id: serverId, ultima_sincronizacao: new Date() })
+      }
+    } else {
+      await db.produtos.update(serverId, { ultima_sincronizacao: new Date() })
+    }
+  }
+
+  function dedupPorNome(lista) {
+    const map = new Map()
+    for (const p of lista) {
+      const k = keyFromNome(p.nome)
+      if (!k) continue
+      map.set(k, p) // mantém o último
+    }
+    return Array.from(map.values())
+  }
+
+  // LOAD LOCAL
   async function fetchClientes() {
     try {
       todosOsClientes.value = await db.clientes.toArray()
     } catch (error) {
-      console.error('Erro ao buscar clientes no IndexedDB:', error)
+      console.error('Erro ao buscar clientes no store:', error)
       todosOsClientes.value = []
     }
   }
-
   async function fetchProdutos() {
     try {
       produtos.value = await db.produtos.toArray()
     } catch (error) {
-      console.error('Erro ao buscar produtos no IndexedDB:', error)
+      console.error('Erro ao buscar produtos no store:', error)
       produtos.value = []
     }
   }
 
-  // Assinatura live do IndexedDB para Produtos (resolve “sumir no F5”)
-  function startProdutosSubscription() {
-    if (produtosSubscription) return
-
-    // Pré-carrega imediatamente o que já existe local
-    db.produtos
-      .toArray()
-      .then((rows) => {
-        console.log('[LIVE] Pré-carregado do IndexedDB:', rows.length)
-        produtos.value = rows
-      })
-      .catch((err) => console.error('Falha no pré-carregamento de produtos:', err))
-
-    // Qualquer mudança no IndexedDB reflete na UI
-    produtosSubscription = liveQuery(() => db.produtos.toArray()).subscribe({
-      next: (rows) => {
-        produtos.value = rows
-      },
-      error: (err) => {
-        console.error('LiveQuery produtos erro:', err)
-      },
-    })
-  }
-
-  // CRUD Produtos (offline-first + envio em background)
-  async function adicionarProduto(payload) {
-    const nome = (payload?.nome || '').trim()
-    const preco = toNumber(payload?.preco)
-    if (!nome) throw new Error('Nome do produto é obrigatório.')
-    if (!Number.isFinite(preco) || preco <= 0) throw new Error('Preço inválido.')
-
-    // Evita duplicado ativo
-    const existente = await db.produtos.where('nome').equalsIgnoreCase(nome).first()
-    if (existente && existente.ativo !== false) {
-      throw new Error('Já existe um produto ativo com esse nome.')
-    }
-
-    const novo = { id: uuidv4(), nome, preco, ativo: true, ultima_sincronizacao: null }
-    await db.produtos.add(novo)
-
-    // NOVO: atualiza a lista já na hora
-    await fetchProdutos()
-
-    // Envio best-effort (não bloqueia UI). Não mandar ultima_sincronizacao.
-    supabase
-      .from('produtos')
-      .upsert([{ id: novo.id, nome: novo.nome, preco: novo.preco, ativo: true }])
-      .then(({ error }) => {
-        if (!error) db.produtos.update(novo.id, { ultima_sincronizacao: new Date() })
-      })
-      .catch((e) => console.warn('Upsert em background falhou (adicionarProduto):', e))
-
-    return novo
-  }
-
-  async function atualizarProduto(payload) {
-    const id = payload?.id
-    if (!id) throw new Error('ID do produto é obrigatório.')
-
-    const update = { ultima_sincronizacao: null }
-    if (payload.nome !== undefined) {
-      const nome = String(payload.nome).trim()
-      if (!nome) throw new Error('Nome do produto é obrigatório.')
-      const existente = await db.produtos.where('nome').equalsIgnoreCase(nome).first()
-      if (existente && existente.id !== id && existente.ativo !== false) {
-        throw new Error('Já existe um produto ativo com esse nome.')
-      }
-      update.nome = nome
-    }
-    if (payload.preco !== undefined) {
-      const preco = toNumber(payload.preco)
-      if (!Number.isFinite(preco) || preco <= 0) throw new Error('Preço inválido.')
-      update.preco = preco
-    }
-
-    // Atualiza LOCAL primeiro
-    await db.produtos.update(id, update)
-
-    // NOVO: atualiza a lista já na hora
-    await fetchProdutos()
-
-    // Envia para a nuvem SEM ultima_sincronizacao
-    const { ultima_sincronizacao: _omit, ...payloadForSupabase } = update
-    supabase
-      .from('produtos')
-      .upsert([{ id, ...payloadForSupabase }])
-      .then(({ error }) => {
-        if (error) {
-          console.error('Falha no upsert Supabase (atualizarProduto):', error)
-          return
-        }
-        db.produtos.update(id, { ultima_sincronizacao: new Date() })
-      })
-      .catch((e) => console.error('Exceção no upsert Supabase (atualizarProduto):', e))
-  }
-
-  async function excluirProduto(produtoOuId) {
-    const id = typeof produtoOuId === 'object' ? produtoOuId?.id : produtoOuId
-    if (!id) throw new Error('ID do produto é obrigatório.')
-
-    await db.produtos.update(id, { ativo: false, ultima_sincronizacao: null })
-
-    // NOVO: atualiza a lista já na hora
-    await fetchProdutos()
-
-    supabase
-      .from('produtos')
-      .upsert([{ id, ativo: false }])
-      .then(({ error }) => {
-        if (!error) db.produtos.update(id, { ultima_sincronizacao: new Date() })
-      })
-      .catch((e) => console.warn('Upsert em background falhou (excluirProduto):', e))
-  }
-
-  async function reativarProduto(id) {
-    if (!id) throw new Error('ID do produto é obrigatório.')
-    await db.produtos.update(id, { ativo: true, ultima_sincronizacao: null })
-
-    // NOVO: atualiza a lista já na hora
-    await fetchProdutos()
-
-    supabase
-      .from('produtos')
-      .upsert([{ id, ativo: true }])
-      .then(({ error }) => {
-        if (!error) db.produtos.update(id, { ultima_sincronizacao: new Date() })
-      })
-      .catch((e) => console.warn('Upsert em background falhou (reativarProduto):', e))
-  }
-
-  // Sincronização manual
-  async function enviarProdutosPendentes() {
-    const pendentes = await db.produtos.filter((p) => !p.ultima_sincronizacao).toArray()
-    console.log('[SYNC] Pendentes:', pendentes.length)
-    if (pendentes.length === 0) return 0
-
-    const payload = pendentes.map(({ ultima_sincronizacao, ...rest }) => rest)
-    const { error } = await supabase.from('produtos').upsert(payload)
-    if (error) {
-      console.error('[SYNC] Erro ao enviar pendentes:', error)
-      throw error
-    }
-
-    await db.produtos.bulkUpdate(
-      pendentes.map((p) => ({ key: p.id, changes: { ultima_sincronizacao: new Date() } })),
-    )
-    console.log('[SYNC] Envio concluído:', pendentes.length)
-    return pendentes.length
-  }
-
-  async function recarregarProdutosDaNuvem() {
-    try {
-      console.log('[SYNC] Baixando produtos da nuvem...')
-      const { data, error } = await supabase.from('produtos').select('*')
-      if (error) throw error
-
-      const qtNuvem = data?.length ?? 0
-      console.log(`[SYNC] Recebidos da nuvem: ${qtNuvem}`)
-
-      if (qtNuvem) {
-        for (const row of data) {
-          await db.produtos.put({ ...row, ultima_sincronizacao: new Date() })
-        }
-      }
-
-      const locais = await db.produtos.count()
-      console.log(`[SYNC] Total local após mesclagem: ${locais}`)
-      await fetchProdutos() // garante atualização da UI
-    } catch (e) {
-      console.error('Erro ao recarregar produtos da nuvem:', e)
-      throw new Error('Falha ao recarregar produtos da nuvem.')
-    }
-  }
-
-  async function sincronizarProdutosAgora() {
-    const qtd = await enviarProdutosPendentes().catch((e) => {
-      console.error('Falha ao enviar pendentes:', e)
-      return 0
-    })
-    await recarregarProdutosDaNuvem()
-    return qtd
-  }
-
-  // Transações (mantidas)
+  // TRANSACOES (mantidas)
   async function fetchTransacoesDoDia(dataISO) {
     try {
       const transacoesDoDB = await db.transacoes
@@ -241,7 +95,6 @@ export const useDataStore = defineStore('data', () => {
         .toArray()
 
       const clientesCarregados = todosOsClientes.value
-
       const lancamentosCompletos = await Promise.all(
         transacoesDoDB.map(async (t) => {
           const itens = await db.itens_transacao.where('transacao_id').equals(t.id).toArray()
@@ -271,7 +124,6 @@ export const useDataStore = defineStore('data', () => {
       transacoes.value = []
     }
   }
-
   async function lancarPedido(transacao, itens) {
     const transacaoId = uuidv4()
     await db.transacoes.add({ ...transacao, id: transacaoId })
@@ -282,167 +134,436 @@ export const useDataStore = defineStore('data', () => {
     await db.itens_transacao.bulkAdd(itensParaSalvar)
     await fetchTransacoesDoDia(transacao.data_transacao)
   }
-
   async function estornarLancamento(lancamento) {
     await db.transacoes.update(lancamento.id, { estornado: true })
     await fetchTransacoesDoDia(lancamento.data_transacao)
   }
-
   async function atualizarStatus(lancamento, updates) {
     await db.transacoes.update(lancamento.id, updates)
     await fetchTransacoesDoDia(lancamento.data_transacao)
   }
 
-  // Sync em lote (mantido como stub)
-  async function syncData() {
-    return // PAUSADO
+  // REALTIME PRODUTOS (dedupe por nome)
+  function startRealtimeProdutos() {
+    try {
+      if (produtosChannel) return
+      console.log('[RT] Iniciando canal realtime de produtos...')
+      produtosChannel = supabase
+        .channel('public:produtos')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'produtos' },
+          async (payload) => {
+            try {
+              if (payload.eventType === 'DELETE') {
+                const id = payload.old?.id
+                if (id) await db.produtos.delete(id)
+              } else {
+                const row = payload.new
+                if (row?.id) {
+                  // Remove locais com mesmo nome e id diferente
+                  const existentesMesmoNome = await db.produtos
+                    .where('nome')
+                    .equalsIgnoreCase(row.nome)
+                    .toArray()
+                  for (const e of existentesMesmoNome) {
+                    if (e.id !== row.id) await db.produtos.delete(e.id)
+                  }
+                  await db.produtos.put({ ...row, ultima_sincronizacao: new Date() })
+                }
+              }
+              await fetchProdutos()
+            } catch (e) {
+              console.error('Erro aplicando evento de produtos:', e)
+            }
+          },
+        )
+        .subscribe((status) => {
+          console.log('[RT] Canal produtos status:', status)
+        })
+    } catch (e) {
+      console.error('Erro ao iniciar realtime de produtos:', e)
+    }
   }
 
-  // Backup/Restauração
+  // PRODUTOS: CRUD com reconciliação de ID
+  async function adicionarProduto({ nome, preco, funcionario }) {
+    const nomeTrim = normalizeNome(nome)
+    const precoNum = toNumber(preco)
+    if (!nomeTrim) throw new Error('Nome e preço são obrigatórios.')
+    if (!Number.isFinite(precoNum) || precoNum <= 0) throw new Error('Preço inválido.')
+
+    const idLocal = uuidv4()
+    const agora = new Date()
+
+    // Local primeiro
+    await db.produtos.add({
+      id: idLocal,
+      nome: nomeTrim,
+      preco: precoNum,
+      ativo: true,
+      funcionario_cadastro: funcionario || null, // só Dexie
+      created_at: agora,
+      updated_at: agora,
+      ultima_sincronizacao: null,
+    })
+    await fetchProdutos()
+
+    // Nuvem com onConflict + select para pegar ID oficial
+    const { data, error } = await supabase
+      .from('produtos')
+      .upsert(
+        [
+          {
+            id: idLocal,
+            nome: nomeTrim,
+            preco: precoNum,
+            ativo: true,
+            created_at: agora.toISOString(),
+            updated_at: agora.toISOString(),
+          },
+        ],
+        { onConflict: 'nome' },
+      )
+      .select()
+
+    if (error) {
+      console.error('[UPSERT produtos] erro:', error)
+      return
+    }
+
+    const serverRow = Array.isArray(data) ? data[0] : null
+    if (serverRow) {
+      await reconciliarLocalComServidor(idLocal, serverRow)
+      const existentesMesmoNome = await db.produtos.where('nome').equalsIgnoreCase(serverRow.nome).toArray()
+      for (const e of existentesMesmoNome) {
+        if (e.id !== serverRow.id) await db.produtos.delete(e.id)
+      }
+      await db.produtos.put({ ...serverRow, ultima_sincronizacao: new Date() })
+      await fetchProdutos()
+    }
+  }
+
+  async function atualizarProduto({ id, nome, preco, ativo = true }) {
+    if (!id) throw new Error('ID inválido.')
+    const agora = new Date()
+
+    const changes = { updated_at: agora, ultima_sincronizacao: null }
+    if (nome !== undefined) {
+      const nomeTrim = normalizeNome(nome)
+      if (!nomeTrim) throw new Error('Nome do produto é obrigatório.')
+      changes.nome = nomeTrim
+    }
+    if (preco !== undefined) {
+      const precoNum = toNumber(preco)
+      if (!Number.isFinite(precoNum) || precoNum <= 0) throw new Error('Preço inválido.')
+      changes.preco = precoNum
+    }
+    if (ativo !== undefined) changes.ativo = !!ativo
+
+    await db.produtos.update(id, changes)
+    await fetchProdutos()
+
+    const payload = { id, updated_at: agora.toISOString() }
+    if ('nome' in changes) payload.nome = changes.nome
+    if ('preco' in changes) payload.preco = changes.preco
+    if ('ativo' in changes) payload.ativo = changes.ativo
+
+    const { data, error } = await supabase.from('produtos').upsert([payload], { onConflict: 'nome' }).select()
+    if (error) {
+      console.error('[UPSERT produtos] erro:', error)
+      return
+    }
+    const serverRow = Array.isArray(data) ? data[0] : null
+    if (serverRow) {
+      await reconciliarLocalComServidor(id, serverRow)
+      const existentesMesmoNome = await db.produtos.where('nome').equalsIgnoreCase(serverRow.nome).toArray()
+      for (const e of existentesMesmoNome) {
+        if (e.id !== serverRow.id) await db.produtos.delete(e.id)
+      }
+      await db.produtos.put({ ...serverRow, ultima_sincronizacao: new Date() })
+      await fetchProdutos()
+    }
+  }
+
+  async function excluirProduto(produtoOuId) {
+    const id = typeof produtoOuId === 'object' ? produtoOuId?.id : produtoOuId
+    if (!id) throw new Error('Produto inválido.')
+    const agora = new Date()
+
+    await db.produtos.update(id, { ativo: false, updated_at: agora, ultima_sincronizacao: null })
+    await fetchProdutos()
+
+    const { data, error } = await supabase
+      .from('produtos')
+      .upsert([{ id, ativo: false, updated_at: agora.toISOString() }], { onConflict: 'nome' })
+      .select()
+    if (error) {
+      console.error('[UPSERT produtos] erro:', error)
+      return
+    }
+    const serverRow = Array.isArray(data) ? data[0] : null
+    if (serverRow) {
+      await reconciliarLocalComServidor(id, serverRow)
+      await db.produtos.put({ ...serverRow, ultima_sincronizacao: new Date() })
+      await fetchProdutos()
+    }
+  }
+
+  async function reativarProduto(id) {
+    if (!id) throw new Error('ID inválido.')
+    await db.produtos.update(id, { ativo: true, ultima_sincronizacao: null })
+    await fetchProdutos()
+    const { data, error } = await supabase
+      .from('produtos')
+      .upsert([{ id, ativo: true, updated_at: new Date().toISOString() }], { onConflict: 'nome' })
+      .select()
+    if (error) {
+      console.error('[UPSERT produtos] erro:', error)
+      return
+    }
+    const serverRow = Array.isArray(data) ? data[0] : null
+    if (serverRow) {
+      await reconciliarLocalComServidor(id, serverRow)
+      await db.produtos.put({ ...serverRow, ultima_sincronizacao: new Date() })
+      await fetchProdutos()
+    }
+  }
+
+  // SYNC
+  async function enviarProdutosPendentes() {
+    const pendentes = await db.produtos.filter((p) => !p.ultima_sincronizacao).toArray()
+    if (pendentes.length === 0) return 0
+
+    const dedup = dedupPorNome(pendentes)
+    const payload = dedup.map(({ ultima_sincronizacao, funcionario_cadastro, ...rest }) => rest)
+
+    const { data, error } = await supabase.from('produtos').upsert(payload, { onConflict: 'nome' }).select()
+    if (error) throw error
+
+    const mapaServer = new Map((data || []).map((r) => [keyFromNome(r.nome), r]))
+    for (const local of dedup) {
+      const server = mapaServer.get(keyFromNome(local.nome))
+      if (server) {
+        await reconciliarLocalComServidor(local.id, server)
+        const existentesMesmoNome = await db.produtos.where('nome').equalsIgnoreCase(server.nome).toArray()
+        for (const e of existentesMesmoNome) {
+          if (e.id !== server.id) await db.produtos.delete(e.id)
+        }
+        await db.produtos.put({ ...server, ultima_sincronizacao: new Date() })
+      }
+    }
+    await fetchProdutos()
+    return dedup.length
+  }
+
+  async function recarregarProdutosDaNuvem() {
+    const { data, error } = await supabase.from('produtos').select('*')
+    if (error) throw error
+    if (Array.isArray(data) && data.length) {
+      const vistos = new Set()
+      for (const row of data) {
+        const k = keyFromNome(row.nome)
+        if (vistos.has(k)) continue
+        vistos.add(k)
+        // remove duplicados locais por nome
+        const existentes = await db.produtos.where('nome').equalsIgnoreCase(row.nome).toArray()
+        for (const e of existentes) {
+          if (e.id !== row.id) await db.produtos.delete(e.id)
+        }
+        await db.produtos.put({ ...row, ultima_sincronizacao: new Date() })
+      }
+    }
+    await fetchProdutos()
+  }
+
+  async function sincronizarProdutosAgora() {
+    try {
+      await enviarProdutosPendentes().catch((e) => {
+        console.error('Falha ao enviar pendentes:', e)
+        return 0 // baixa mesmo assim
+      })
+      await recarregarProdutosDaNuvem()
+      return true
+    } catch (e) {
+      console.error('Falha ao sincronizar produtos agora:', e)
+      try {
+        await recarregarProdutosDaNuvem()
+      } catch {}
+      return false
+    }
+  }
+
+  async function syncData() {
+    try {
+      // Clientes
+      const clientesPend = await db.clientes.filter((c) => !c.ultima_sincronizacao).toArray()
+      if (clientesPend.length) {
+        const payload = clientesPend.map(({ ultima_sincronizacao, ...rest }) => rest)
+        const { error } = await supabase.from('clientes').upsert(payload)
+        if (error) throw error
+        await db.clientes.bulkUpdate(
+          clientesPend.map((c) => ({ key: c.id, changes: { ultima_sincronizacao: new Date() } })),
+        )
+        console.log(`[SYNC] Clientes sincronizados: ${clientesPend.length}`)
+      }
+
+      // Produtos
+      await enviarProdutosPendentes()
+
+      // Transações
+      const transPend = await db.transacoes.filter((t) => !t.ultima_sincronizacao).toArray()
+      if (transPend.length) {
+        const payload = transPend.map(({ ultima_sincronizacao, ...rest }) => rest)
+        const { error } = await supabase.from('transacoes').upsert(payload)
+        if (error) throw error
+        await db.transacoes.bulkUpdate(
+          transPend.map((t) => ({ key: t.id, changes: { ultima_sincronizacao: new Date() } })),
+        )
+        console.log(`[SYNC] Transações sincronizadas: ${transPend.length}`)
+      }
+
+      // Itens de transação
+      const itensPend = await db.itens_transacao.filter((i) => !i.ultima_sincronizacao).toArray()
+      if (itensPend.length) {
+        const payload = itensPend.map(({ ultima_sincronizacao, ...rest }) => rest)
+        const { error } = await supabase.from('itens_transacao').upsert(payload)
+        if (error) throw error
+        await db.itens_transacao.bulkUpdate(
+          itensPend.map((i) => ({ key: i.id, changes: { ultima_sincronizacao: new Date() } })),
+        )
+        console.log(`[SYNC] Itens sincronizados: ${itensPend.length}`)
+      }
+
+      console.log('[SYNC] Concluída.')
+    } catch (error) {
+      console.error('[SYNC] ERRO:', error)
+    }
+  }
+
+  // BACKUP/RESTORE
   async function criarClienteAvulsoPadrao() {
     const clienteAvulsoExiste = await db.clientes.where('nome').equalsIgnoreCase('Cliente Avulso').first()
     if (!clienteAvulsoExiste) {
       try {
-        await db.clientes.add({ id: uuidv4(), nome: 'Cliente Avulso', tipo: 'AVULSO', ativo: true })
+        await db.clientes.add({
+          id: uuidv4(),
+          nome: 'Cliente Avulso',
+          tipo: 'AVULSO',
+          ativo: true,
+        })
       } catch (error) {
         if (error.name !== 'ConstraintError') console.error('Erro ao criar cliente avulso:', error)
       }
     }
   }
-
   async function restaurarBackupDaNuvem() {
     console.log('Banco local vazio. Tentando restaurar da nuvem...')
     let sucessoGeral = true
-
-    const restaurarTabela = async (nomeTabela, dbTable) => {
+    const restaurar = async (nomeTabela, dbTable) => {
       try {
         const { data, error } = await supabase.from(nomeTabela).select('*')
         if (error) throw error
-        if (data.length > 0) {
+        if (Array.isArray(data) && data.length) {
           await dbTable.bulkPut(data.map((d) => ({ ...d, ultima_sincronizacao: new Date() })))
-          console.log(`${data.length} registros restaurados para '${nomeTabela}'.`)
+          console.log(`${data.length} registros restaurados: ${nomeTabela}`)
         }
-      } catch (error) {
-        console.error(`Falha ao restaurar tabela '${nomeTabela}':`, error)
+      } catch (e) {
+        console.error(`Falha ao restaurar '${nomeTabela}':`, e)
         sucessoGeral = false
       }
     }
-
-    await restaurarTabela('clientes', db.clientes)
-    await restaurarTabela('produtos', db.produtos)
-    await restaurarTabela('transacoes', db.transacoes)
-    await restaurarTabela('itens_transacao', db.itens_transacao)
-    await restaurarTabela('funcionarios', db.funcionarios)
-
+    await restaurar('clientes', db.clientes)
+    await restaurar('produtos', db.produtos)
+    await restaurar('transacoes', db.transacoes)
+    await restaurar('itens_transacao', db.itens_transacao)
+    await restaurar('funcionarios', db.funcionarios)
     console.log(`Restauração concluída. Sucesso: ${sucessoGeral}`)
     return sucessoGeral
   }
 
-  async function restaurarProdutosSeVazio() {
-    const count = await db.produtos.count()
-    if (count > 0) return true
-    try {
-      const { data, error } = await supabase.from('produtos').select('*')
-      if (error) throw error
-      if (data && data.length > 0) {
-        await db.produtos.bulkPut(data.map((d) => ({ ...d, ultima_sincronizacao: new Date() })))
-        console.log(`${data.length ?? 0} produtos restaurados da nuvem.`)
-      }
-      return true
-    } catch (e) {
-      console.error('Falha ao restaurar produtos da nuvem:', e)
-      return false
-    }
-  }
-
-  // Network: ao ficar online, sincroniza automaticamente
-  function setupNetworkWatch() {
-    online.value = navigator.onLine
-    window.addEventListener('online', async () => {
-      online.value = true
-      try {
-        await enviarProdutosPendentes()
-        await recarregarProdutosDaNuvem()
-      } catch (e) {
-        console.error('Falha na sincronização ao voltar online:', e)
-      }
-    })
-    window.addEventListener('offline', () => (online.value = false))
-  }
-
-  // Initialize (ordem importante)
+  // INITIALIZE
   async function initialize() {
     loading.value = true
+    erroCarregamento.value = null
     try {
-      setupNetworkWatch()
-
       const contagemClientes = await db.clientes.count()
       if (contagemClientes === 0) {
-        const restauradoComSucesso = await restaurarBackupDaNuvem()
-        if (!restauradoComSucesso) await criarClienteAvulsoPadrao()
+        const restaurado = await restaurarBackupDaNuvem()
+        if (!restaurado) await criarClienteAvulsoPadrao()
       }
 
-      // 1) Assina IndexedDB e carrega local
-      startProdutosSubscription()
       await fetchClientes()
       await fetchProdutos()
 
-      // 2) Se produtos estiver vazio, tenta restaurar
-      await restaurarProdutosSeVazio()
+      // Realtime
+      startRealtimeProdutos()
 
-      // 3) Mescla novidades da nuvem (não apaga local)
-      await recarregarProdutosDaNuvem()
-
-      // 4) Liga Realtime para receber alterações de outros dispositivos
-      if (!produtosRealtimeChannel) {
-        try {
-          produtosRealtimeChannel = setupRealtimeProducts()
-        } catch (e) {
-          console.error('Falha ao iniciar Realtime de produtos:', e)
-        }
-      }
+      // Sincroniza e agenda
+      await syncData()
+      setInterval(syncData, 120000)
+    } catch (e) {
+      erroCarregamento.value = e
+      console.error('Falha ao inicializar data store:', e)
     } finally {
       loading.value = false
     }
   }
 
-  // Retorno do store
+  // Opcional: expõe util de fix forte
+  async function reconciliarProdutosForte() {
+    const { data, error } = await supabase.from('produtos').select('*')
+    if (error) { console.error(error); return false }
+    await db.produtos.clear()
+    const agora = new Date()
+    for (const row of data || []) {
+      await db.produtos.put({ ...row, ultima_sincronizacao: agora })
+    }
+    await fetchProdutos()
+    console.log('[FIX] Reconciliação forte concluída:', (data || []).length)
+    return true
+  }
+  if (typeof window !== 'undefined') {
+    window.__startRT = startRealtimeProdutos
+    window.__fixProdutos = reconciliarProdutosForte
+  }
+
+  // RETURN
   return {
-    // Listas
+    // state
     todosOsClientes,
     produtos,
     transacoes,
-    // Computeds
-    clientesAtivos,
-    produtosAtivos,
-    // Estados
     loading,
     erroCarregamento,
     online,
 
-    // Ações públicas
-    initialize,
+    // getters
+    clientesAtivos,
+    produtosAtivos,
+
+    // ações base
     fetchClientes,
     fetchProdutos,
-    fetchTransacoesDoDia,
 
-    // Produtos
+    // produtos
     adicionarProduto,
     atualizarProduto,
     excluirProduto,
     reativarProduto,
-
-    // Sync
     enviarProdutosPendentes,
     recarregarProdutosDaNuvem,
     sincronizarProdutosAgora,
 
-    // Outros
+    // transações
+    fetchTransacoesDoDia,
     lancarPedido,
     estornarLancamento,
     atualizarStatus,
+
+    // sync/restore/boot
     syncData,
     restaurarBackupDaNuvem,
-    restaurarProdutosSeVazio,
+    initialize,
   }
 })

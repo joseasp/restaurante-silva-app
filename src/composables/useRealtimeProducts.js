@@ -1,32 +1,31 @@
 // src/composables/useRealtimeProducts.js
-// Realtime: Supabase -> IndexedDB (Dexie), HMR-safe
-import { supabase } from '@/services/supabaseClient'
-import { db } from '@/services/databaseService'
+import { ref } from 'vue'
+import { liveQuery } from 'dexie'
+import { db } from '@/services/databaseService.js'
+import { useObservable } from '@vueuse/rxjs'
 
-export function setupRealtimeProducts() {
-  if (window.__rtProdutosChannel) return window.__rtProdutosChannel
+export function useRealtimeProducts({ onlyActive = true } = {}) {
+  const loading = ref(true)
+  const error = ref(null)
 
-  const channel = supabase
-    .channel('rt-produtos')
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'produtos' },
-      async (payload) => {
-        try {
-          if (payload.eventType === 'DELETE') {
-            await db.produtos.delete(payload.old.id)
-            return
-          }
-          await db.produtos.put({ ...payload.new, ultima_sincronizacao: new Date() })
-        } catch (e) {
-          console.error('Erro ao aplicar evento realtime de produtos:', e)
-        }
-      },
-    )
-    .subscribe((status) => {
-      console.log('Realtime produtos:', status)
-    })
+  const observable = liveQuery(async () => {
+    loading.value = true
+    try {
+      let lista = await db.produtos.toArray()
+      if (onlyActive) {
+        lista = lista.filter((p) => p.ativo !== false)
+      }
+      // Ordene como preferir (por nome/preço/data)
+      lista.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
+      return lista
+    } catch (err) {
+      error.value = err
+      return []
+    } finally {
+      loading.value = false
+    }
+  })
 
-  window.__rtProdutosChannel = channel
-  return channel
+  const products = useObservable(observable, { initialValue: [] })
+  return { products, loading, error }
 }
